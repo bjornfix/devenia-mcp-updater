@@ -73,7 +73,7 @@ function devenia_mcp_updater_get_manifest( bool $force_refresh = false ) {
 }
 
 /**
- * Store a compact status record for Ops/proxy inspection.
+ * Store a compact update status record.
  *
  * @param string $state   Status state.
  * @param string $message Human-readable message.

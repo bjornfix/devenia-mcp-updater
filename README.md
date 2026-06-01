@@ -12,7 +12,7 @@ Private WordPress update channel for Devenia MCP and Abilities plugins.
 
 ## What It Does
 
-Devenia MCP Updater connects known internal MCP plugins to a private update manifest and WordPress' native plugin update system.
+Devenia MCP Updater connects Devenia MCP plugins to a private update manifest and WordPress' native plugin update system.
 
 It lets the WordPress sites keep their MCP/Abilities plugin layer in sync automatically instead of relying on manual site-by-site checks.
 
@@ -20,7 +20,7 @@ The updater only accepts packages from the Devenia downloads channel, requires a
 
 ## Why This Exists
 
-The Devenia WordPress MCP proxy depends on the same Abilities plugins being available across many sites. If one site drifts behind, agents get an inconsistent control surface and both humans and agents lose confidence in what can be operated safely.
+Devenia MCP plugins need a reliable update channel even when they are not distributed through WordPress.org.
 
 This plugin moves that sync problem into WordPress itself:
 
@@ -28,7 +28,6 @@ This plugin moves that sync problem into WordPress itself:
 - WordPress auto-updates manifest-managed MCP plugins when allowed by the manifest
 - package downloads are hash-verified before installation
 - invalid, stale, or unchecked manifest entries are ignored
-- Ops tooling can inspect a compact status option instead of guessing from plugin versions alone
 
 ## Documentation
 
@@ -48,7 +47,7 @@ This plugin moves that sync problem into WordPress itself:
 ## Installation
 
 1. Download the latest ZIP from the private GitHub repository or Devenia downloads channel.
-2. Upload via WordPress Admin > Plugins > Add New > Upload Plugin, or through the WordPress MCP proxy `plugins/upload` ability.
+2. Upload via WordPress Admin > Plugins > Add New > Upload Plugin.
 3. Activate the plugin.
 4. Trigger a normal WordPress update check or wait for WordPress cron.
 
@@ -135,7 +134,7 @@ Useful states include:
 - `download_hash_mismatch`
 - `download_hash_verified`
 
-This is intended for Ops Console and MCP proxy inspection.
+This value is available to site administrators and maintenance tooling.
 
 ## Changelog
 
@@ -146,7 +145,7 @@ This is intended for Ops Console and MCP proxy inspection.
 - Enables auto-update for manifest-managed plugins.
 - Verifies staged package SHA256 before install.
 - Requires a passed Plugin Check gate for manifest entries.
-- Records compact status for ops inspection.
+- Records compact update status.
 
 ## License
 

@@ -12,11 +12,11 @@ Private update channel and automatic sync for Devenia MCP and Abilities plugins.
 
 == Description ==
 
-Devenia MCP Updater connects known internal MCP plugins to a private manifest and WordPress' native plugin update system.
+Devenia MCP Updater connects Devenia MCP plugins to a private manifest and WordPress' native plugin update system.
 
 It only accepts packages from the Devenia downloads channel and requires a matching SHA256 plus a passed WordPress.org Plugin Check gate in the manifest.
 
-The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer in sync automatically. Agents should not need to guess which site has which control surface.
+The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer in sync automatically.
 
 = What It Does =
 
@@ -24,7 +24,7 @@ The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer
 * Enables unattended auto-updates for manifest-managed plugins
 * Verifies package SHA256 before WordPress installs a ZIP
 * Ignores manifest entries that are missing a passed Plugin Check report
-* Stores compact updater status for ops/proxy inspection
+* Stores compact updater status
 
 = Requirements =
 
@@ -58,7 +58,7 @@ This plugin is the private update bootstrap for plugins that cannot be hosted on
 
 == Installation ==
 
-1. Upload the plugin ZIP via WordPress Admin > Plugins > Add New > Upload Plugin, or through the WordPress MCP proxy `plugins/upload` ability
+1. Upload the plugin ZIP via WordPress Admin > Plugins > Add New > Upload Plugin
 2. Activate the plugin
 3. Trigger a normal WordPress update check or wait for WordPress cron
 
@@ -86,4 +86,4 @@ The updater records a manifest error status and leaves the installed plugins unc
 * Enable auto-update for known MCP/Abilities plugins
 * Verify package SHA256 before install
 * Require a passed Plugin Check gate for manifest entries
-* Record compact updater status for ops inspection
+* Record compact updater status
