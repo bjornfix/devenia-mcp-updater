@@ -94,6 +94,22 @@ Expected flow:
 
 Warnings from Plugin Check can be non-blocking. Errors block publication into the manifest.
 
+## Release Gate
+
+Normal MCP/Abilities plugins must pass the dev WordPress.org Plugin Check gate before they are published into the private manifest.
+
+This plugin is different. Devenia MCP Updater is the private update bootstrap for plugins that cannot be hosted on WordPress.org. WordPress.org Plugin Check is expected to flag it for changing update routines.
+
+That expected failure is allowed only when the report contains the known updater restrictions:
+
+- `plugin_updater_detected`
+- `update_modification_detected`
+- `site_transient_update_plugins`
+- `auto_update_plugin`
+- `pre_set_site_transient_update_plugins`
+
+Any other Plugin Check error is blocking.
+
 ## Safety Model
 
 - The updater does not install arbitrary plugins.

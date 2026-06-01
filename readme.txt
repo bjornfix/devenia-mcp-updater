@@ -50,6 +50,12 @@ Accepted manifest entries must include plugin file, version, package URL, SHA256
 * Failed or stale Plugin Check reports block manifest entries
 * If the manifest cannot be read, installed plugins are left untouched
 
+= Release Gate =
+
+Normal MCP/Abilities plugins must pass dev WordPress.org Plugin Check before entering the private manifest.
+
+This plugin is the private update bootstrap for plugins that cannot be hosted on WordPress.org. Plugin Check is expected to flag it for changing update routines. That expected failure is allowed only for the known updater restriction codes. Any other Plugin Check error blocks release.
+
 == Installation ==
 
 1. Upload the plugin ZIP via WordPress Admin > Plugins > Add New > Upload Plugin, or through the WordPress MCP proxy `plugins/upload` ability
