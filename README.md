@@ -5,7 +5,7 @@ Private WordPress update channel for Devenia MCP and Abilities plugins.
 [![GitHub release](https://img.shields.io/github/v/release/bjornfix/devenia-mcp-updater)](https://github.com/bjornfix/devenia-mcp-updater/releases)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 
-**Tested up to:** 6.9
+**Tested up to:** 7.0
 **Stable tag:** 0.1.0
 **License:** GPLv2 or later
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
@@ -139,4 +139,3 @@ GPL-2.0+
 ## Author
 
 [Devenia](https://devenia.com) - We've been doing SEO and web development since 1993.
-
