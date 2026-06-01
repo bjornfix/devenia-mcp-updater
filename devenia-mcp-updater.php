@@ -3,13 +3,13 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
  * Requires at least: 6.8
  * Requires PHP: 7.4
- * Update URI: https://dev.devenia.com/downloads/devenia-mcp-manifest.json
+ * Update URI: https://downloads.devenia.com/devenia-mcp-manifest.json
  *
  * @package Devenia_MCP_Updater
  */
@@ -20,8 +20,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.0' );
-define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://dev.devenia.com/downloads/devenia-mcp-manifest.json' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.1' );
+define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
 

@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -38,7 +38,7 @@ The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer
 
 The updater reads the private manifest from:
 
-`https://dev.devenia.com/downloads/devenia-mcp-manifest.json`
+`https://downloads.devenia.com/devenia-mcp-manifest.json`
 
 Accepted manifest entries must include plugin file, version, package URL, SHA256 hash, and a passed Plugin Check status for the same SHA256.
 
@@ -79,6 +79,9 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.1 =
+* Move the private manifest and package channel to `https://downloads.devenia.com/`
 
 = 0.1.0 =
 * Initial private MCP update channel
