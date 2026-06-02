@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.4
+ * Version: 0.1.5
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.4' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.5' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
@@ -244,10 +244,34 @@ function devenia_mcp_updater_find_legacy_duplicates( array $installed, array $ma
 }
 
 /**
+ * Mark a canonical plugin file active without loading its PHP in this request.
+ *
+ * This is only used when replacing an already-loaded duplicate plugin copy.
+ * Calling activate_plugin() in that situation can load a second copy of the
+ * same functions and fatally redeclare them.
+ *
+ * @param string $canonical_file Canonical manifest plugin file.
+ * @return bool
+ */
+function devenia_mcp_updater_mark_plugin_active_for_next_request( string $canonical_file ): bool {
+	$active_plugins = (array) get_option( 'active_plugins', array() );
+	if ( in_array( $canonical_file, $active_plugins, true ) ) {
+		return true;
+	}
+
+	$active_plugins[] = $canonical_file;
+	$active_plugins   = array_values( array_unique( $active_plugins ) );
+
+	return update_option( 'active_plugins', $active_plugins );
+}
+
+/**
  * Reconcile stale duplicate folders against the manifest's canonical plugin files.
  *
  * If a stale duplicate is active, it is deactivated before the canonical plugin
- * is activated. This avoids loading two copies of the same PHP functions.
+ * is marked active for the next request. The canonical plugin is not loaded in
+ * the current request because the duplicate copy may already have declared the
+ * same PHP functions.
  *
  * @param bool $force Whether to ignore the reconciliation throttle.
  * @return array<string,mixed>
@@ -295,12 +319,11 @@ function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ):
 		}
 
 		if ( $legacy_active && ! is_plugin_active( $canonical_file ) ) {
-			$activation = activate_plugin( $canonical_file );
-			if ( is_wp_error( $activation ) ) {
+			if ( ! devenia_mcp_updater_mark_plugin_active_for_next_request( $canonical_file ) ) {
 				$errors[] = array(
 					'plugin'  => $legacy_file,
-					'action'  => 'activate_canonical',
-					'message' => $activation->get_error_message(),
+					'action'  => 'mark_canonical_active',
+					'message' => 'Could not mark canonical plugin active for the next request.',
 				);
 				continue;
 			}
