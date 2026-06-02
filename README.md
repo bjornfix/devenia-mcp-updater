@@ -6,7 +6,7 @@ Private WordPress update channel for Devenia MCP and Abilities plugins.
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 
 **Tested up to:** 7.0
-**Stable tag:** 0.1.3
+**Stable tag:** 0.1.4
 **License:** GPLv2 or later
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -141,6 +141,10 @@ Useful states include:
 This value is available to site administrators and maintenance tooling.
 
 ## Changelog
+
+### 0.1.4
+
+- Deactivates stale duplicate plugin copies before activating the canonical manifest plugin to avoid duplicate PHP declarations.
 
 ### 0.1.3
 

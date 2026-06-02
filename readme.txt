@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.3
+Stable tag: 0.1.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,6 +81,9 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.4 =
+* Deactivate stale duplicate plugin copies before activating the canonical manifest plugin to avoid duplicate PHP declarations.
 
 = 0.1.3 =
 * Detect and remove stale duplicate folders for manifest-managed plugins after activation, plugin upgrades, and periodic admin checks.

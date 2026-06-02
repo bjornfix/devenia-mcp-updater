@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.3
+ * Version: 0.1.4
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.3' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.4' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
@@ -246,9 +246,8 @@ function devenia_mcp_updater_find_legacy_duplicates( array $installed, array $ma
 /**
  * Reconcile stale duplicate folders against the manifest's canonical plugin files.
  *
- * If a stale duplicate is active, the canonical plugin is activated first, the
- * stale copy is deactivated, and then the stale folder is deleted when WordPress'
- * plugin deletion API allows it.
+ * If a stale duplicate is active, it is deactivated before the canonical plugin
+ * is activated. This avoids loading two copies of the same PHP functions.
  *
  * @param bool $force Whether to ignore the reconciliation throttle.
  * @return array<string,mixed>
@@ -282,6 +281,19 @@ function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ):
 		$legacy_file    = $duplicate['legacy'];
 		$legacy_active  = is_plugin_active( $legacy_file );
 
+		if ( $legacy_active ) {
+			deactivate_plugins( $legacy_file, true );
+		}
+
+		if ( is_plugin_active( $legacy_file ) ) {
+			$errors[] = array(
+				'plugin'  => $legacy_file,
+				'action'  => 'deactivate_legacy',
+				'message' => 'Legacy plugin remained active after deactivation attempt.',
+			);
+			continue;
+		}
+
 		if ( $legacy_active && ! is_plugin_active( $canonical_file ) ) {
 			$activation = activate_plugin( $canonical_file );
 			if ( is_wp_error( $activation ) ) {
@@ -294,19 +306,6 @@ function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ):
 			}
 
 			$activated[] = $canonical_file;
-		}
-
-		if ( is_plugin_active( $legacy_file ) ) {
-			deactivate_plugins( $legacy_file, true );
-		}
-
-		if ( is_plugin_active( $legacy_file ) ) {
-			$errors[] = array(
-				'plugin'  => $legacy_file,
-				'action'  => 'deactivate_legacy',
-				'message' => 'Legacy plugin remained active after deactivation attempt.',
-			);
-			continue;
 		}
 
 		$deleted = delete_plugins( array( $legacy_file ) );
