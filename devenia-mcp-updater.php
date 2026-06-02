@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.1' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.2' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
@@ -97,6 +97,23 @@ function devenia_mcp_updater_record_status( string $state, string $message, arra
 }
 
 /**
+ * Check whether a manifest package URL belongs to the Devenia package channel.
+ *
+ * @param string $package Package URL.
+ * @return bool
+ */
+function devenia_mcp_updater_is_allowed_package_url( string $package ): bool {
+	$host = wp_parse_url( $package, PHP_URL_HOST );
+	$path = wp_parse_url( $package, PHP_URL_PATH );
+
+	if ( ! is_string( $host ) || ! is_string( $path ) || '.zip' !== substr( $path, -4 ) ) {
+		return false;
+	}
+
+	return 'downloads.devenia.com' === $host && 1 === preg_match( '#^/[A-Za-z0-9._-]+\.zip$#', $path );
+}
+
+/**
  * Normalize a plugin manifest entry.
  *
  * @param mixed $entry Raw manifest entry.
@@ -116,9 +133,7 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 		return null;
 	}
 
-	$host = wp_parse_url( $package, PHP_URL_HOST );
-	$path = wp_parse_url( $package, PHP_URL_PATH );
-	if ( 'dev.devenia.com' !== $host || ! is_string( $path ) || 0 !== strpos( $path, '/downloads/' ) ) {
+	if ( ! devenia_mcp_updater_is_allowed_package_url( $package ) ) {
 		return null;
 	}
 

@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.1
+Stable tag: 0.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -79,6 +79,9 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.2 =
+* Accept only the canonical `https://downloads.devenia.com/<plugin>.zip` package channel at runtime.
 
 = 0.1.1 =
 * Move the private manifest and package channel to `https://downloads.devenia.com/`
