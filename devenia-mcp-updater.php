@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.2
+ * Version: 0.1.3
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,10 +20,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.2' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.3' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
+define( 'DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT', 'devenia_mcp_updater_legacy_reconcile_v1' );
 
 /**
  * Fetch and cache the private MCP manifest.
@@ -176,6 +177,199 @@ function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): ar
 
 	return $plugins;
 }
+
+/**
+ * Load WordPress plugin-management helpers when they are not already loaded.
+ *
+ * @return void
+ */
+function devenia_mcp_updater_require_plugin_helpers(): void {
+	if ( ! function_exists( 'get_plugins' ) || ! function_exists( 'is_plugin_active' ) || ! function_exists( 'activate_plugin' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+	}
+
+	if ( ! function_exists( 'delete_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+	}
+}
+
+/**
+ * Find stale duplicate folders for manifest-managed plugins.
+ *
+ * A stale duplicate is a plugin installed in a folder like `slug-master` with
+ * the same main plugin filename as the canonical manifest entry. The updater
+ * never treats arbitrary plugin folders as stale.
+ *
+ * @param array<string,array<string,string>> $installed Installed plugins from get_plugins().
+ * @param array<string,array<string,mixed>>  $manifest_plugins Manifest plugins indexed by canonical plugin file.
+ * @return array<int,array<string,string>>
+ */
+function devenia_mcp_updater_find_legacy_duplicates( array $installed, array $manifest_plugins ): array {
+	$duplicates = array();
+
+	foreach ( $manifest_plugins as $canonical_file => $entry ) {
+		if ( ! isset( $installed[ $canonical_file ] ) ) {
+			continue;
+		}
+
+		$canonical_dir      = dirname( $canonical_file );
+		$canonical_basename = basename( $canonical_file );
+		$legacy_prefix      = $canonical_dir . '-';
+
+		foreach ( $installed as $installed_file => $plugin_data ) {
+			if ( $canonical_file === $installed_file ) {
+				continue;
+			}
+
+			$installed_dir      = dirname( $installed_file );
+			$installed_basename = basename( $installed_file );
+
+			if ( $canonical_basename !== $installed_basename ) {
+				continue;
+			}
+
+			if ( 0 !== strpos( $installed_dir, $legacy_prefix ) ) {
+				continue;
+			}
+
+			$duplicates[] = array(
+				'canonical' => $canonical_file,
+				'legacy'    => $installed_file,
+			);
+		}
+	}
+
+	return $duplicates;
+}
+
+/**
+ * Reconcile stale duplicate folders against the manifest's canonical plugin files.
+ *
+ * If a stale duplicate is active, the canonical plugin is activated first, the
+ * stale copy is deactivated, and then the stale folder is deleted when WordPress'
+ * plugin deletion API allows it.
+ *
+ * @param bool $force Whether to ignore the reconciliation throttle.
+ * @return array<string,mixed>
+ */
+function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ): array {
+	if ( ! $force && get_site_transient( DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT ) ) {
+		return array(
+			'checked' => false,
+			'reason'  => 'throttled',
+		);
+	}
+
+	devenia_mcp_updater_require_plugin_helpers();
+
+	$manifest_plugins = devenia_mcp_updater_manifest_plugins();
+	if ( array() === $manifest_plugins ) {
+		return array(
+			'checked' => true,
+			'reason'  => 'empty_manifest',
+		);
+	}
+
+	$installed  = get_plugins();
+	$duplicates = devenia_mcp_updater_find_legacy_duplicates( $installed, $manifest_plugins );
+	$removed    = array();
+	$activated  = array();
+	$errors     = array();
+
+	foreach ( $duplicates as $duplicate ) {
+		$canonical_file = $duplicate['canonical'];
+		$legacy_file    = $duplicate['legacy'];
+		$legacy_active  = is_plugin_active( $legacy_file );
+
+		if ( $legacy_active && ! is_plugin_active( $canonical_file ) ) {
+			$activation = activate_plugin( $canonical_file );
+			if ( is_wp_error( $activation ) ) {
+				$errors[] = array(
+					'plugin'  => $legacy_file,
+					'action'  => 'activate_canonical',
+					'message' => $activation->get_error_message(),
+				);
+				continue;
+			}
+
+			$activated[] = $canonical_file;
+		}
+
+		if ( is_plugin_active( $legacy_file ) ) {
+			deactivate_plugins( $legacy_file, true );
+		}
+
+		if ( is_plugin_active( $legacy_file ) ) {
+			$errors[] = array(
+				'plugin'  => $legacy_file,
+				'action'  => 'deactivate_legacy',
+				'message' => 'Legacy plugin remained active after deactivation attempt.',
+			);
+			continue;
+		}
+
+		$deleted = delete_plugins( array( $legacy_file ) );
+		if ( is_wp_error( $deleted ) ) {
+			$errors[] = array(
+				'plugin'  => $legacy_file,
+				'action'  => 'delete_legacy',
+				'message' => $deleted->get_error_message(),
+			);
+			continue;
+		}
+
+		$removed[] = $legacy_file;
+	}
+
+	set_site_transient( DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT, 1, HOUR_IN_SECONDS );
+
+	if ( array() !== $removed || array() !== $activated || array() !== $errors ) {
+		devenia_mcp_updater_record_status(
+			array() === $errors ? 'legacy_reconciled' : 'legacy_reconcile_error',
+			array() === $errors ? 'Stale manifest-managed plugin folders were reconciled.' : 'Some stale manifest-managed plugin folders could not be reconciled.',
+			array(
+				'legacy_removed'      => $removed,
+				'canonical_activated' => array_values( array_unique( $activated ) ),
+				'legacy_errors'       => $errors,
+			)
+		);
+	}
+
+	return array(
+		'checked'             => true,
+		'duplicates_detected' => count( $duplicates ),
+		'legacy_removed'      => $removed,
+		'canonical_activated' => array_values( array_unique( $activated ) ),
+		'errors'              => $errors,
+	);
+}
+
+/**
+ * Run the duplicate-folder reconciliation occasionally during normal admin use.
+ *
+ * @return void
+ */
+function devenia_mcp_updater_maybe_reconcile_legacy_duplicates(): void {
+	devenia_mcp_updater_reconcile_legacy_duplicates( false );
+}
+add_action( 'admin_init', 'devenia_mcp_updater_maybe_reconcile_legacy_duplicates' );
+
+/**
+ * Reconcile stale duplicate folders after plugin installs or updates.
+ *
+ * @param WP_Upgrader $upgrader Upgrader instance.
+ * @param array       $hook_extra Upgrader hook context.
+ * @return void
+ */
+function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra ): void {
+	if ( 'plugin' !== ( $hook_extra['type'] ?? '' ) ) {
+		return;
+	}
+
+	devenia_mcp_updater_reconcile_legacy_duplicates( true );
+}
+add_action( 'upgrader_process_complete', 'devenia_mcp_updater_after_plugin_upgrade', 10, 2 );
 
 /**
  * Add private MCP plugin updates to WordPress' normal plugin update transient.
@@ -344,7 +538,9 @@ add_filter( 'plugins_api', 'devenia_mcp_updater_plugins_api', 10, 3 );
 function devenia_mcp_updater_refresh(): void {
 	delete_site_transient( DEVENIA_MCP_UPDATER_TRANSIENT );
 	delete_site_transient( 'update_plugins' );
+	delete_site_transient( DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT );
 	wp_update_plugins();
+	devenia_mcp_updater_reconcile_legacy_duplicates( true );
 }
 
 register_activation_hook( __FILE__, 'devenia_mcp_updater_refresh' );

@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.2
+Stable tag: 0.1.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,6 +23,7 @@ The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer
 * Adds private MCP plugin updates to WordPress' normal plugin update checks
 * Enables unattended auto-updates for manifest-managed plugins
 * Verifies package SHA256 before WordPress installs a ZIP
+* Reconciles stale duplicate folders for manifest-managed plugins, such as `plugin-master`
 * Ignores manifest entries that are missing a passed Plugin Check report
 * Stores compact updater status
 
@@ -47,6 +48,7 @@ Accepted manifest entries must include plugin file, version, package URL, SHA256
 * Only manifest-listed plugins are managed
 * Only package URLs under the Devenia downloads path are accepted
 * Every package is hash-verified before installation
+* Stale duplicate folders are removed only when the canonical manifest plugin is installed
 * Failed or stale Plugin Check reports block manifest entries
 * If the manifest cannot be read, installed plugins are left untouched
 
@@ -79,6 +81,10 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.3 =
+* Detect and remove stale duplicate folders for manifest-managed plugins after activation, plugin upgrades, and periodic admin checks.
+* Move active state from a stale duplicate folder to the canonical manifest plugin before deleting the duplicate.
 
 = 0.1.2 =
 * Accept only the canonical `https://downloads.devenia.com/<plugin>.zip` package channel at runtime.

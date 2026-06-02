@@ -6,7 +6,7 @@ Private WordPress update channel for Devenia MCP and Abilities plugins.
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 
 **Tested up to:** 7.0
-**Stable tag:** 0.1.2
+**Stable tag:** 0.1.3
 **License:** GPLv2 or later
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -27,6 +27,7 @@ This plugin moves that sync problem into WordPress itself:
 - WordPress discovers available MCP plugin updates through the normal update transient
 - WordPress auto-updates manifest-managed MCP plugins when allowed by the manifest
 - package downloads are hash-verified before installation
+- stale duplicate folders for manifest-managed plugins are reconciled back to the canonical manifest path
 - invalid, stale, or unchecked manifest entries are ignored
 
 ## Documentation
@@ -115,6 +116,7 @@ Any other Plugin Check error is blocking.
 - The updater only manages plugins explicitly listed in the manifest.
 - The updater only accepts packages hosted under the Devenia downloads path.
 - Every package is verified with SHA256 before WordPress installs it.
+- Stale duplicate folders are removed only after the canonical manifest plugin is installed.
 - Manifest entries must reference a passed Plugin Check report for the same SHA256.
 - If the manifest is unavailable or invalid, the updater records status and leaves installed plugins untouched.
 
@@ -130,6 +132,8 @@ Useful states include:
 
 - `synced`
 - `updates_available`
+- `legacy_reconciled`
+- `legacy_reconcile_error`
 - `manifest_error`
 - `download_hash_mismatch`
 - `download_hash_verified`
@@ -137,6 +141,11 @@ Useful states include:
 This value is available to site administrators and maintenance tooling.
 
 ## Changelog
+
+### 0.1.3
+
+- Detects stale duplicate folders for manifest-managed plugins after activation, plugin upgrades, and periodic admin checks.
+- Moves active state from a stale duplicate folder to the canonical manifest plugin before deleting the duplicate.
 
 ### 0.1.2
 
