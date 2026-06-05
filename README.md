@@ -86,7 +86,7 @@ It is especially useful when the manual version is repetitive enough that import
 Start with the main plugin page and base stack documentation:
 
 - [MCP Expose Abilities](https://devenia.com/plugins/mcp-expose-abilities/)
-- [Plugin Page](https://devenia.com/plugins/mcp-expose-abilities/#add-ons)
+- [Plugin Page](https://devenia.com/plugins/devenia-mcp-updater/)
 - [Getting Started](https://github.com/bjornfix/mcp-expose-abilities/wiki/Getting-Started)
 - [Install Order and Dependencies](https://github.com/bjornfix/mcp-expose-abilities/wiki/Install-Order-and-Dependencies)
 
@@ -161,7 +161,7 @@ GPL-2.0+
 
 ## Links
 
-- [Plugin Page](https://devenia.com/plugins/mcp-expose-abilities/#add-ons)
+- [Plugin Page](https://devenia.com/plugins/devenia-mcp-updater/)
 - [MCP Expose Abilities](https://devenia.com/plugins/mcp-expose-abilities/)
 - [GitHub Releases](https://github.com/bjornfix/devenia-mcp-updater/releases)
 
