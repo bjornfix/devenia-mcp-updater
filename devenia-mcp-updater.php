@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.5
+ * Version: 0.1.6
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.5' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.6' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
@@ -366,16 +366,6 @@ function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ):
 		'errors'              => $errors,
 	);
 }
-
-/**
- * Run the duplicate-folder reconciliation occasionally during normal admin use.
- *
- * @return void
- */
-function devenia_mcp_updater_maybe_reconcile_legacy_duplicates(): void {
-	devenia_mcp_updater_reconcile_legacy_duplicates( false );
-}
-add_action( 'admin_init', 'devenia_mcp_updater_maybe_reconcile_legacy_duplicates' );
 
 /**
  * Reconcile stale duplicate folders after plugin installs or updates.

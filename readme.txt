@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.5
+Stable tag: 0.1.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,7 +23,7 @@ The goal is simple: WordPress sites should keep their MCP/Abilities plugin layer
 * Adds private MCP plugin updates to WordPress' normal plugin update checks
 * Enables unattended auto-updates for manifest-managed plugins
 * Verifies package SHA256 before WordPress installs a ZIP
-* Reconciles stale duplicate folders for manifest-managed plugins, such as `plugin-master`
+* Reconciles stale duplicate folders for manifest-managed plugins during activation and plugin upgrade flows
 * Ignores manifest entries that are missing a passed Plugin Check report
 * Stores compact updater status
 
@@ -81,6 +81,9 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.6 =
+* Remove periodic duplicate-folder reconciliation from normal admin page loads. Reconciliation now runs only during activation, explicit refresh, or plugin upgrade flows.
 
 = 0.1.5 =
 * Mark the canonical plugin active for the next request during duplicate cleanup instead of loading a second copy in the current request.

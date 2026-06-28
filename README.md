@@ -8,7 +8,7 @@ Private update channel and automatic sync for Devenia MCP and Abilities plugins.
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.0
-**Stable tag:** 0.1.5
+**Stable tag:** 0.1.6
 **License:** GPLv2 or later
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -111,11 +111,15 @@ If you skip base-stack verification and start with add-ons immediately, troubles
 - The updater only manages plugins explicitly listed in the manifest.
 - The updater only accepts packages hosted under the Devenia downloads path.
 - Every package is verified with SHA256 before WordPress installs it.
-- Stale duplicate folders are removed only after the canonical manifest plugin is installed.
+- Stale duplicate folders are removed only after the canonical manifest plugin is installed, during activation, explicit refresh, or plugin upgrade flows.
 - Manifest entries must reference a passed Plugin Check report for the same SHA256.
 - If the manifest is unavailable or invalid, the updater records status and leaves installed plugins untouched.
 
 ## Changelog
+
+### 0.1.6
+
+- Removes periodic duplicate-folder reconciliation from normal admin page loads. Reconciliation now runs only during activation, explicit refresh, or plugin upgrade flows.
 
 ### 0.1.5
 
