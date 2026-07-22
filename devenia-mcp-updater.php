@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.8
+ * Version: 0.1.9
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.8' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.9' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -201,7 +201,6 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 		$sha256 !== strtolower( (string) ( $release_identity['sha256'] ?? '' ) ) ||
 		$version !== (string) ( $release_identity['version'] ?? '' ) ||
 		$file !== (string) ( $release_identity['mainFile'] ?? '' )
-		|| 1 !== (int) ( $release_identity['schemaVersion'] ?? 0 )
 		|| $slug !== (string) ( $release_identity['slug'] ?? '' )
 		|| ! devenia_mcp_updater_release_identity_provenance_is_valid( $release_identity )
 	) {
@@ -250,12 +249,48 @@ function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exceptio
 	return true;
 }
 
-/** Validate authenticated repository and member-manifest provenance fields. */
+/** Validate an authenticated schema-2 source identity. */
+function devenia_mcp_updater_release_identity_source_is_valid( array $source ): bool {
+	$adapter = (string) ( $source['adapter'] ?? '' );
+	if ( 'wordpress-org-svn' === $adapter ) {
+		return 1 === preg_match( '#^https://plugins\.svn\.wordpress\.org/[a-z0-9-]+/(?:trunk|tags/[^/]+)$#', (string) ( $source['url'] ?? '' ) )
+			&& 1 === preg_match( '/^[1-9][0-9]*$/', (string) ( $source['revision'] ?? '' ) );
+	}
+	if ( 'local-filesystem' === $adapter ) {
+		return 1 === preg_match( '/^[a-f0-9]{64}$/', (string) ( $source['snapshotSha256'] ?? '' ) );
+	}
+	if ( 'git' !== $adapter ) {
+		return false;
+	}
+	$path   = (string) ( $source['path'] ?? '' );
+	$remote = $source['remote'] ?? null;
+	return is_string( $remote )
+		&& '' !== $remote
+		&& 1 === preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $source['commit'] ?? '' ) )
+		&& 1 === preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $source['tree'] ?? '' ) )
+		&& 1 === preg_match( '#^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\\\)[^:\x00]+$#', $path );
+}
+
+/** Validate authenticated release-source and member-manifest provenance fields. */
 function devenia_mcp_updater_release_identity_provenance_is_valid( array $identity ): bool {
-	$repository = is_array( $identity['repository'] ?? null ) ? $identity['repository'] : array();
-	if ( '' === (string) ( $repository['remote'] ?? '' )
-		|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['commit'] ?? '' ) )
-		|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['tree'] ?? '' ) ) ) {
+	if ( ! is_int( $identity['schemaVersion'] ?? null ) ) {
+		return false;
+	}
+	$schema_version = $identity['schemaVersion'];
+	$repository     = is_array( $identity['repository'] ?? null ) ? $identity['repository'] : array();
+	$source         = is_array( $identity['source'] ?? null ) ? $identity['source'] : array();
+	if ( 1 === $schema_version ) {
+		if ( ! is_string( $repository['remote'] ?? null )
+			|| '' === $repository['remote']
+			|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['commit'] ?? '' ) )
+			|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['tree'] ?? '' ) ) ) {
+			return false;
+		}
+	} elseif ( 2 === $schema_version ) {
+		if ( ! devenia_mcp_updater_release_identity_source_is_valid( $source ) ) {
+			return false;
+		}
+	} else {
 		return false;
 	}
 	$members = $identity['members'] ?? null;
@@ -268,7 +303,12 @@ function devenia_mcp_updater_release_identity_provenance_is_valid( array $identi
 		}
 	}
 	$canonical = (string) wp_json_encode( array_values( $members ), JSON_UNESCAPED_SLASHES );
-	return hash_equals( hash( 'sha256', $canonical ), (string) $identity['membersSha256'] );
+	$members_sha256 = (string) $identity['membersSha256'];
+	if ( ! hash_equals( hash( 'sha256', $canonical ), $members_sha256 ) ) {
+		return false;
+	}
+	return 'local-filesystem' !== (string) ( $source['adapter'] ?? '' )
+		|| hash_equals( $members_sha256, (string) ( $source['snapshotSha256'] ?? '' ) );
 }
 
 /** Validate the complete canonical Plugin Check runtime fingerprint. */

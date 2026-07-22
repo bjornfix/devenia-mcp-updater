@@ -107,6 +107,61 @@ $plugins = array(
 			),
 		),
 );
+$schema_2_git_entry = $plugins[0];
+$schema_2_git_entry['releaseIdentity']['schemaVersion'] = 2;
+$schema_2_git_entry['releaseIdentity']['source'] = array(
+	'adapter' => 'git',
+	'remote'  => 'https://github.com/example/repo.git',
+	'commit'  => str_repeat( 'c', 40 ),
+	'tree'    => str_repeat( 'd', 40 ),
+	'path'    => '.',
+);
+unset( $schema_2_git_entry['releaseIdentity']['repository'] );
+if ( null === devenia_mcp_updater_normalize_entry( $schema_2_git_entry ) ) {
+	throw new RuntimeException( 'A valid schema-2 Git release identity was rejected.' );
+}
+$schema_2_svn_entry = $schema_2_git_entry;
+$schema_2_svn_entry['releaseIdentity']['source'] = array(
+	'adapter'  => 'wordpress-org-svn',
+	'url'      => 'https://plugins.svn.wordpress.org/mcp-expose-abilities/trunk',
+	'revision' => '3619056',
+);
+if ( null === devenia_mcp_updater_normalize_entry( $schema_2_svn_entry ) ) {
+	throw new RuntimeException( 'A valid schema-2 WordPress.org SVN release identity was rejected.' );
+}
+$schema_2_local_entry = $schema_2_git_entry;
+$schema_2_local_entry['releaseIdentity']['source'] = array(
+	'adapter'        => 'local-filesystem',
+	'snapshotSha256' => $schema_2_local_entry['releaseIdentity']['membersSha256'],
+);
+if ( null === devenia_mcp_updater_normalize_entry( $schema_2_local_entry ) ) {
+	throw new RuntimeException( 'A valid schema-2 local snapshot release identity was rejected.' );
+}
+$invalid_schema_2_entries = array();
+$invalid_schema_2_entries['unknown adapter'] = $schema_2_git_entry;
+$invalid_schema_2_entries['unknown adapter']['releaseIdentity']['source']['adapter'] = 'unknown';
+$invalid_schema_2_entries['parent Git path'] = $schema_2_git_entry;
+$invalid_schema_2_entries['parent Git path']['releaseIdentity']['source']['path'] = '../outside';
+$invalid_schema_2_entries['non-WordPress.org SVN URL'] = $schema_2_svn_entry;
+$invalid_schema_2_entries['non-WordPress.org SVN URL']['releaseIdentity']['source']['url'] = 'https://example.com/plugin/trunk';
+$invalid_schema_2_entries['unbound local snapshot'] = $schema_2_local_entry;
+$invalid_schema_2_entries['unbound local snapshot']['releaseIdentity']['source']['snapshotSha256'] = str_repeat( 'f', 64 );
+$invalid_schema_2_entries['string schema version'] = $schema_2_git_entry;
+$invalid_schema_2_entries['string schema version']['releaseIdentity']['schemaVersion'] = '2';
+$invalid_schema_2_entries['partially numeric schema version'] = $schema_2_git_entry;
+$invalid_schema_2_entries['partially numeric schema version']['releaseIdentity']['schemaVersion'] = '2junk';
+$invalid_schema_2_entries['non-string Git remote'] = $schema_2_git_entry;
+$invalid_schema_2_entries['non-string Git remote']['releaseIdentity']['source']['remote'] = array( 'https://github.com/example/repo.git' );
+foreach ( $invalid_schema_2_entries as $label => $entry ) {
+	if ( null !== devenia_mcp_updater_normalize_entry( $entry ) ) {
+		throw new RuntimeException( 'Invalid schema-2 release identity was approved: ' . $label );
+	}
+}
+$invalid_schema_1_entry = $plugins[0];
+$invalid_schema_1_entry['releaseIdentity']['repository']['remote'] = array( 'https://github.com/example/repo.git' );
+if ( null !== devenia_mcp_updater_normalize_entry( $invalid_schema_1_entry ) ) {
+	throw new RuntimeException( 'A non-string schema-1 repository remote was approved.' );
+}
 $GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
 $GLOBALS['fixture_installed'][ $plugin_file ] = array( 'Version' => $version );
 $GLOBALS['fixture_updates'] = (object) array(
