@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.6
+ * Version: 0.1.7
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.6' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.7' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
@@ -177,6 +177,49 @@ function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): ar
 
 	return $plugins;
 }
+
+/**
+ * Allow MCP Expose to update an exact manifest-gated package.
+ *
+ * MCP Expose owns only the neutral policy seam. This private updater Adapter
+ * owns manifest, package, version, and update-offer identity.
+ *
+ * @param bool   $allowed     Existing policy decision.
+ * @param string $plugin_file Canonical plugin file.
+ */
+function devenia_mcp_updater_allow_mcp_expose_plugin_update( bool $allowed, string $plugin_file ): bool {
+	if ( $allowed ) {
+		return true;
+	}
+
+	$manifest_plugins = devenia_mcp_updater_manifest_plugins( true );
+	if ( ! isset( $manifest_plugins[ $plugin_file ] ) || ! is_array( $manifest_plugins[ $plugin_file ] ) ) {
+		return false;
+	}
+
+	$manifest_entry = $manifest_plugins[ $plugin_file ];
+	if ( empty( $manifest_entry['autoUpdate'] ) ) {
+		return false;
+	}
+
+	$manifest_package = (string) ( $manifest_entry['package'] ?? '' );
+	$manifest_version = (string) ( $manifest_entry['version'] ?? '' );
+	if ( '' === $manifest_package || '' === $manifest_version ) {
+		return false;
+	}
+
+	wp_clean_plugins_cache( true );
+	wp_update_plugins();
+	$updates = get_site_transient( 'update_plugins' );
+	if ( ! is_object( $updates ) || empty( $updates->response ) || ! is_array( $updates->response ) || ! isset( $updates->response[ $plugin_file ] ) ) {
+		return false;
+	}
+
+	$update_item = $updates->response[ $plugin_file ];
+	return hash_equals( $manifest_package, (string) ( $update_item->package ?? '' ) )
+		&& hash_equals( $manifest_version, (string) ( $update_item->new_version ?? '' ) );
+}
+add_filter( 'mcp_expose_plugin_update_allowed_by_policy', 'devenia_mcp_updater_allow_mcp_expose_plugin_update', 10, 2 );
 
 /**
  * Load WordPress plugin-management helpers when they are not already loaded.
