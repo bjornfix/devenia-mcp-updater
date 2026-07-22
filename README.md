@@ -8,7 +8,7 @@ Private update channel and automatic sync for Devenia MCP and Abilities plugins.
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.0
-**Stable tag:** 0.1.7
+**Stable tag:** 0.1.8
 **License:** GPLv2 or later
 **License URI:** https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -116,6 +116,12 @@ If you skip base-stack verification and start with add-ons immediately, troubles
 - If the manifest is unavailable or invalid, the updater records status and leaves installed plugins untouched.
 
 ## Changelog
+
+### 0.1.8
+
+- Verifies an Ed25519-signed manifest envelope before consuming update entries.
+- Requires release identity plus strict zero-finding Plugin Check evidence.
+- Supports immutable content-addressed package URLs.
 
 ### 0.1.7
 

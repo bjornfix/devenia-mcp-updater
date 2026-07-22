@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.7
+ * Version: 0.1.8
  * Author: Devenia
  * Author URI: https://devenia.com
  * License: GPL-2.0+
@@ -20,10 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.7' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.8' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
-define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v1' );
+define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
+if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
+	define( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY', 'WIinfFgjeRtcWHSZavh6hQ2MfcUPKkuT9wCuyhuKbqg=' );
+}
+if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_KEY_ID' ) ) {
+	define( 'DEVENIA_MCP_UPDATER_MANIFEST_KEY_ID', '9735a17d2469b4c4' );
+}
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
+define( 'DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION', 'devenia_mcp_updater_rollout_receipts' );
+define( 'DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION', 'devenia_mcp_updater_rollout_pending' );
 define( 'DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT', 'devenia_mcp_updater_legacy_reconcile_v1' );
 
 /**
@@ -62,15 +70,45 @@ function devenia_mcp_updater_get_manifest( bool $force_refresh = false ) {
 		return $error;
 	}
 
-	$manifest = json_decode( wp_remote_retrieve_body( $response ), true );
-	if ( ! is_array( $manifest ) || ! isset( $manifest['plugins'] ) || ! is_array( $manifest['plugins'] ) ) {
-		$error = new WP_Error( 'devenia_mcp_manifest_invalid', 'Manifest JSON is invalid.' );
-		devenia_mcp_updater_record_status( 'manifest_error', 'Manifest JSON is invalid' );
+	$envelope = json_decode( wp_remote_retrieve_body( $response ), true );
+	$manifest = devenia_mcp_updater_verified_manifest_payload( $envelope );
+	if ( is_wp_error( $manifest ) ) {
+		$error = $manifest;
+		devenia_mcp_updater_record_status( 'manifest_error', $error->get_error_message() );
 		return $error;
 	}
 
 	set_site_transient( DEVENIA_MCP_UPDATER_TRANSIENT, $manifest, 30 * MINUTE_IN_SECONDS );
 	return $manifest;
+}
+
+/** Verify the signed manifest envelope and return only its authenticated payload. */
+function devenia_mcp_updater_verified_manifest_payload( $envelope, string $public_key_base64 = DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY ) {
+	if (
+		! is_array( $envelope )
+		|| 2 !== (int) ( $envelope['schemaVersion'] ?? 0 )
+		|| 'Ed25519' !== (string) ( $envelope['signature']['algorithm'] ?? '' )
+		|| DEVENIA_MCP_UPDATER_MANIFEST_KEY_ID !== (string) ( $envelope['signature']['keyId'] ?? '' )
+		|| ! is_string( $envelope['signedPayload'] ?? null )
+		|| ! is_string( $envelope['signature']['value'] ?? null )
+		|| ! function_exists( 'sodium_crypto_sign_verify_detached' )
+	) {
+		return new WP_Error( 'devenia_mcp_manifest_signature_invalid', 'Manifest signature envelope is invalid.' );
+	}
+	$payload_bytes = base64_decode( $envelope['signedPayload'], true );
+	$signature     = base64_decode( $envelope['signature']['value'], true );
+	$public_key    = base64_decode( $public_key_base64, true );
+	if ( false === $payload_bytes || false === $signature || false === $public_key || SODIUM_CRYPTO_SIGN_BYTES !== strlen( $signature ) || SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES !== strlen( $public_key ) ) {
+		return new WP_Error( 'devenia_mcp_manifest_signature_invalid', 'Manifest signature material is invalid.' );
+	}
+	if ( ! sodium_crypto_sign_verify_detached( $signature, $payload_bytes, $public_key ) ) {
+		return new WP_Error( 'devenia_mcp_manifest_signature_invalid', 'Manifest signature verification failed.' );
+	}
+	$payload = json_decode( $payload_bytes, true );
+	if ( ! is_array( $payload ) || ! isset( $payload['plugins'] ) || ! is_array( $payload['plugins'] ) ) {
+		return new WP_Error( 'devenia_mcp_manifest_invalid', 'Authenticated manifest payload is invalid.' );
+	}
+	return $payload;
 }
 
 /**
@@ -111,7 +149,7 @@ function devenia_mcp_updater_is_allowed_package_url( string $package ): bool {
 		return false;
 	}
 
-	return 'downloads.devenia.com' === $host && 1 === preg_match( '#^/[A-Za-z0-9._-]+\.zip$#', $path );
+	return 'downloads.devenia.com' === $host && 1 === preg_match( '#^/(?:artifacts/[a-z0-9-]+/[a-f0-9]{64}/)?[A-Za-z0-9._-]+\.zip$#', $path );
 }
 
 /**
@@ -125,23 +163,47 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 		return null;
 	}
 
+	$slug    = isset( $entry['slug'] ) ? sanitize_key( (string) $entry['slug'] ) : '';
 	$file    = isset( $entry['file'] ) ? sanitize_text_field( (string) $entry['file'] ) : '';
 	$version = isset( $entry['version'] ) ? sanitize_text_field( (string) $entry['version'] ) : '';
 	$package = isset( $entry['package'] ) ? esc_url_raw( (string) $entry['package'] ) : '';
 	$sha256  = isset( $entry['sha256'] ) ? strtolower( preg_replace( '/[^a-f0-9]/', '', (string) $entry['sha256'] ) ) : '';
 
-	if ( '' === $file || '' === $version || '' === $package || '' === $sha256 ) {
+	if ( '' === $slug || '' === $file || '' === $version || '' === $package || 64 !== strlen( $sha256 ) ) {
 		return null;
 	}
 
 	if ( ! devenia_mcp_updater_is_allowed_package_url( $package ) ) {
 		return null;
 	}
+	$expected_package = sprintf( 'https://downloads.devenia.com/artifacts/%1$s/%2$s/%1$s.zip', $slug, $sha256 );
+	if ( ! hash_equals( $expected_package, $package ) || 0 !== strpos( $file, $slug . '/' ) ) {
+		return null;
+	}
 
 	$plugin_check = isset( $entry['pluginCheck'] ) && is_array( $entry['pluginCheck'] ) ? $entry['pluginCheck'] : array();
+	$release_identity = isset( $entry['releaseIdentity'] ) && is_array( $entry['releaseIdentity'] ) ? $entry['releaseIdentity'] : array();
+	$fingerprint = isset( $plugin_check['verificationFingerprint'] ) && is_array( $plugin_check['verificationFingerprint'] ) ? $plugin_check['verificationFingerprint'] : array();
+	$strict_quality = 'strict-zero-finding' === (string) ( $plugin_check['qualityDecision'] ?? '' )
+		&& 0 === (int) ( $plugin_check['errorCount'] ?? -1 )
+		&& 0 === (int) ( $plugin_check['warningCount'] ?? -1 )
+		&& empty( $plugin_check['policyException'] )
+		&& 'wp-plugin-check-exit-zero-strict-json-or-native-empty-v1' === (string) ( $plugin_check['gateEvidence'] ?? '' );
+	$exception_quality = 'approved-policy-exception' === (string) ( $plugin_check['qualityDecision'] ?? '' )
+		&& devenia_mcp_updater_is_exact_quality_exception( $slug, $plugin_check['policyException'] ?? null );
 	if (
 		'passed' !== ( $plugin_check['status'] ?? '' ) ||
-		$sha256 !== strtolower( (string) ( $plugin_check['sha256'] ?? '' ) )
+		$sha256 !== strtolower( (string) ( $plugin_check['sha256'] ?? '' ) ) ||
+		( ! $strict_quality && ! $exception_quality ) ||
+		$sha256 !== strtolower( (string) ( $fingerprint['packageSha256'] ?? '' ) ) ||
+		$version !== (string) ( $fingerprint['pluginVersion'] ?? '' ) ||
+		! devenia_mcp_updater_fingerprint_is_valid( $fingerprint ) ||
+		$sha256 !== strtolower( (string) ( $release_identity['sha256'] ?? '' ) ) ||
+		$version !== (string) ( $release_identity['version'] ?? '' ) ||
+		$file !== (string) ( $release_identity['mainFile'] ?? '' )
+		|| 1 !== (int) ( $release_identity['schemaVersion'] ?? 0 )
+		|| $slug !== (string) ( $release_identity['slug'] ?? '' )
+		|| ! devenia_mcp_updater_release_identity_provenance_is_valid( $release_identity )
 	) {
 		return null;
 	}
@@ -153,6 +215,88 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 	$entry['name']    = isset( $entry['name'] ) ? sanitize_text_field( (string) $entry['name'] ) : $file;
 
 	return $entry;
+}
+
+/** Accept only the two centrally approved, exact Plugin Check exceptions. */
+function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exception ): bool {
+	$approved = array(
+		'devenia-mcp-updater' => array(
+			'status' => 'private-infrastructure-waived',
+			'reason' => 'This bootstrap plugin owns the authenticated private updater channel and is intentionally not a WordPress.org-hosted updater.',
+			'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ),
+			'requiredDetected' => array( 'site_transient_update_plugins', 'auto_update_plugin', 'pre_set_site_transient_update_plugins' ),
+		),
+		'mcp-expose-abilities' => array(
+			'status' => 'plugin-management-waived',
+			'reason' => 'This authenticated MCP plugin intentionally exposes policy-gated plugin installation operations outside WordPress.org distribution.',
+			'allowedCodes' => array( 'PluginCheck.CodeAnalysis.WriteFile.PluginDirectoryWrite' ),
+			'requiredDetected' => array( 'unzip_file', 'copy_dir', 'WP_PLUGIN_DIR' ),
+		),
+	);
+	if ( ! isset( $approved[ $slug ] ) || ! is_array( $exception ) ) {
+		return false;
+	}
+	foreach ( $approved[ $slug ] as $key => $expected ) {
+		$actual = $exception[ $key ] ?? null;
+		if ( is_array( $expected ) ) {
+			$actual = is_array( $actual ) ? array_values( $actual ) : array();
+			sort( $actual );
+			sort( $expected );
+		}
+		if ( $actual !== $expected ) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/** Validate authenticated repository and member-manifest provenance fields. */
+function devenia_mcp_updater_release_identity_provenance_is_valid( array $identity ): bool {
+	$repository = is_array( $identity['repository'] ?? null ) ? $identity['repository'] : array();
+	if ( '' === (string) ( $repository['remote'] ?? '' )
+		|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['commit'] ?? '' ) )
+		|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['tree'] ?? '' ) ) ) {
+		return false;
+	}
+	$members = $identity['members'] ?? null;
+	if ( ! is_array( $members ) || array() === $members || 1 !== preg_match( '/^[a-f0-9]{64}$/', (string) ( $identity['membersSha256'] ?? '' ) ) ) {
+		return false;
+	}
+	foreach ( $members as $member ) {
+		if ( ! is_array( $member ) || '' === (string) ( $member['path'] ?? '' ) || 0 > (int) ( $member['size'] ?? -1 ) || 1 !== preg_match( '/^[a-f0-9]{64}$/', (string) ( $member['sha256'] ?? '' ) ) ) {
+			return false;
+		}
+	}
+	$canonical = (string) wp_json_encode( array_values( $members ), JSON_UNESCAPED_SLASHES );
+	return hash_equals( hash( 'sha256', $canonical ), (string) $identity['membersSha256'] );
+}
+
+/** Validate the complete canonical Plugin Check runtime fingerprint. */
+function devenia_mcp_updater_fingerprint_is_valid( array $fingerprint ): bool {
+	foreach ( array( 'packageSha256', 'pluginVersion', 'pluginCheckVersion', 'wordpressVersion', 'phpVersion', 'digest' ) as $key ) {
+		if ( '' === (string) ( $fingerprint[ $key ] ?? '' ) ) {
+			return false;
+		}
+	}
+	if ( 1 !== (int) ( $fingerprint['schemaVersion'] ?? 0 ) || ! is_array( $fingerprint['policy'] ?? null ) ) {
+		return false;
+	}
+	$actual = strtolower( (string) $fingerprint['digest'] );
+	unset( $fingerprint['digest'] );
+	$canonicalize = static function ( $value ) use ( &$canonicalize ) {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+		if ( array_keys( $value ) !== range( 0, count( $value ) - 1 ) ) {
+			ksort( $value );
+		}
+		foreach ( $value as $key => $item ) {
+			$value[ $key ] = $canonicalize( $item );
+		}
+		return $value;
+	};
+	$expected = hash( 'sha256', (string) wp_json_encode( $canonicalize( $fingerprint ), JSON_UNESCAPED_SLASHES ) );
+	return hash_equals( $expected, $actual );
 }
 
 /**
@@ -168,10 +312,19 @@ function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): ar
 	}
 
 	$plugins = array();
+	$slugs = array();
+	$packages = array();
 	foreach ( $manifest['plugins'] as $entry ) {
 		$normalized = devenia_mcp_updater_normalize_entry( $entry );
 		if ( null !== $normalized ) {
+			$slug = (string) $normalized['slug'];
+			$package = (string) $normalized['package'];
+			if ( isset( $plugins[ $normalized['file'] ] ) || isset( $slugs[ $slug ] ) || isset( $packages[ $package ] ) ) {
+				return array();
+			}
 			$plugins[ $normalized['file'] ] = $normalized;
+			$slugs[ $slug ] = true;
+			$packages[ $package ] = true;
 		}
 	}
 
@@ -423,8 +576,96 @@ function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra 
 	}
 
 	devenia_mcp_updater_reconcile_legacy_duplicates( true );
+	devenia_mcp_updater_record_rollout_receipts( $hook_extra );
 }
 add_action( 'upgrader_process_complete', 'devenia_mcp_updater_after_plugin_upgrade', 10, 2 );
+
+/** Capture per-site prior identity and activation before WordPress replaces files. */
+function devenia_mcp_updater_capture_preinstall( $response, array $hook_extra ) {
+	if ( 'plugin' !== (string) ( $hook_extra['type'] ?? '' ) ) {
+		return $response;
+	}
+	devenia_mcp_updater_require_plugin_helpers();
+	$plugin_file = (string) ( $hook_extra['plugin'] ?? '' );
+	$installed   = get_plugins();
+	$managed     = devenia_mcp_updater_manifest_plugins();
+	if ( '' !== $plugin_file && isset( $installed[ $plugin_file ], $managed[ $plugin_file ] ) ) {
+		$prior = array(
+			'version' => (string) ( $installed[ $plugin_file ]['Version'] ?? '' ),
+			'active'  => is_plugin_active( $plugin_file ),
+			'manifestEntry' => $managed[ $plugin_file ],
+			'capturedAt' => gmdate( 'c' ),
+		);
+		$GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] = $prior;
+		$pending = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
+		$pending = is_array( $pending ) ? $pending : array();
+		$pending[ $plugin_file ] = $prior;
+		update_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, $pending, false );
+	}
+	return $response;
+}
+add_filter( 'upgrader_pre_install', 'devenia_mcp_updater_capture_preinstall', 10, 2 );
+
+/** Record terminal rollout identity and health after a managed plugin update. */
+function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void {
+	devenia_mcp_updater_require_plugin_helpers();
+	$changed = array();
+	if ( isset( $hook_extra['plugin'] ) && is_string( $hook_extra['plugin'] ) ) {
+		$changed[] = $hook_extra['plugin'];
+	}
+	if ( isset( $hook_extra['plugins'] ) && is_array( $hook_extra['plugins'] ) ) {
+		$changed = array_merge( $changed, array_map( 'strval', $hook_extra['plugins'] ) );
+	}
+	$changed   = array_values( array_unique( $changed ) );
+	$installed = get_plugins();
+	$pending   = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
+	$pending   = is_array( $pending ) ? $pending : array();
+	$health_response = wp_remote_get(
+		add_query_arg( 'devenia_rollout_health', (string) time(), home_url( '/' ) ),
+		array( 'timeout' => 10, 'redirection' => 2, 'headers' => array( 'Cache-Control' => 'no-cache' ) )
+	);
+	$health_code = is_wp_error( $health_response ) ? 0 : (int) wp_remote_retrieve_response_code( $health_response );
+	$site_healthy = 200 <= $health_code && 400 > $health_code;
+	$receipts  = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array() );
+	$receipts  = is_array( $receipts ) ? $receipts : array();
+	foreach ( $changed as $plugin_file ) {
+		$prior = is_array( $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] ?? null )
+			? $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]
+			: ( is_array( $pending[ $plugin_file ] ?? null ) ? $pending[ $plugin_file ] : array() );
+		$entry = is_array( $prior['manifestEntry'] ?? null ) ? $prior['manifestEntry'] : array();
+		if ( empty( $entry ) ) {
+			continue;
+		}
+		$actual_version = (string) ( $installed[ $plugin_file ]['Version'] ?? '' );
+		$active         = is_plugin_active( $plugin_file );
+		$version_ok     = '' !== $actual_version && hash_equals( (string) $entry['version'], $actual_version );
+		$prior_captured = array_key_exists( 'active', $prior ) && '' !== (string) ( $prior['version'] ?? '' );
+		$activation_preserved = $prior_captured && (bool) $prior['active'] === $active;
+		$receipt = array(
+			'schemaVersion'   => 1,
+			'site'            => home_url( '/' ),
+			'plugin'          => $plugin_file,
+			'priorVersion'    => (string) ( $prior['version'] ?? '' ),
+			'newVersion'      => (string) $entry['version'],
+			'actualVersion'   => $actual_version,
+			'packageSha256'   => (string) $entry['sha256'],
+			'active'          => $active,
+			'priorActive'     => array_key_exists( 'active', $prior ) ? (bool) $prior['active'] : null,
+			'activationPreserved' => $activation_preserved,
+			'priorStateCaptured' => $prior_captured,
+			'health'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'plugin_identity_activation_and_live_site_health_passed' : 'prior_version_activation_or_live_site_invariant_failed',
+			'healthHttpStatus' => $health_code,
+			'rollback'        => is_array( $entry['rollback'] ?? null ) ? $entry['rollback'] : array( 'available' => false ),
+			'status'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'passed' : 'failed',
+			'completedAt'     => gmdate( 'c' ),
+		);
+		$receipts[] = $receipt;
+		unset( $pending[ $plugin_file ], $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] );
+		devenia_mcp_updater_record_status( 'passed' === $receipt['status'] ? 'rollout_passed' : 'rollout_failed', 'Terminal managed-plugin rollout receipt recorded.', array( 'rollout' => $receipt ) );
+	}
+	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array_slice( $receipts, -100 ), false );
+	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, $pending, false );
+}
 
 /**
  * Add private MCP plugin updates to WordPress' normal plugin update transient.

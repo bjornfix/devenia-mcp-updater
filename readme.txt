@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, private, plugins
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.7
+Stable tag: 0.1.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,6 +81,11 @@ Not through this updater. The manifest entry must include a passed Plugin Check 
 The updater records a manifest error status and leaves the installed plugins unchanged.
 
 == Changelog ==
+
+= 0.1.8 =
+* Verify an Ed25519-signed manifest envelope before accepting any update entry.
+* Require exact release identity and zero-finding Plugin Check fingerprint evidence.
+* Accept immutable content-addressed package URLs on the Devenia download channel.
 
 = 0.1.7 =
 * Supplies manifest-gated update approval through MCP Expose's neutral plugin-update policy seam.
