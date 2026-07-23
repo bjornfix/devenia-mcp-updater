@@ -3,9 +3,9 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.9
- * Author: Devenia
- * Author URI: https://devenia.com
+ * Version: 0.1.10
+ * Author: basicus
+ * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
  * Requires at least: 6.8
  * Requires PHP: 7.4
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.9' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.10' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -33,6 +33,11 @@ define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
 define( 'DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION', 'devenia_mcp_updater_rollout_receipts' );
 define( 'DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION', 'devenia_mcp_updater_rollout_pending' );
 define( 'DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT', 'devenia_mcp_updater_legacy_reconcile_v1' );
+define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION', 'devenia_mcp_updater_receipt_migration_v1' );
+define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION', 'devenia_mcp_updater_receipt_migration_lock_v1' );
+
+/** @var string[] Managed plugin files awaiting request-terminal rollout evidence. */
+$GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
 
 /**
  * Fetch and cache the private MCP manifest.
@@ -611,14 +616,50 @@ function devenia_mcp_updater_reconcile_legacy_duplicates( bool $force = false ):
  * @return void
  */
 function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra ): void {
+	unset( $upgrader );
 	if ( 'plugin' !== ( $hook_extra['type'] ?? '' ) ) {
 		return;
 	}
 
 	devenia_mcp_updater_reconcile_legacy_duplicates( true );
-	devenia_mcp_updater_record_rollout_receipts( $hook_extra );
+	devenia_mcp_updater_schedule_rollout_receipts( $hook_extra );
 }
 add_action( 'upgrader_process_complete', 'devenia_mcp_updater_after_plugin_upgrade', 10, 2 );
+
+/** Queue changed plugin files until callers have restored their activation state. */
+function devenia_mcp_updater_schedule_rollout_receipts( array $hook_extra ): void {
+	$changed = array();
+	if ( isset( $hook_extra['plugin'] ) && is_string( $hook_extra['plugin'] ) ) {
+		$changed[] = $hook_extra['plugin'];
+	}
+	if ( isset( $hook_extra['plugins'] ) && is_array( $hook_extra['plugins'] ) ) {
+		$changed = array_merge( $changed, array_map( 'strval', $hook_extra['plugins'] ) );
+	}
+	$GLOBALS['devenia_mcp_updater_rollout_changed'] = array_values(
+		array_unique( array_merge( (array) ( $GLOBALS['devenia_mcp_updater_rollout_changed'] ?? array() ), $changed ) )
+	);
+}
+
+/**
+ * Finalize durable rollout evidence after the update caller has reactivated
+ * plugins, or on the next request when an earlier request ended prematurely.
+ */
+function devenia_mcp_updater_flush_rollout_receipts( ?bool $health_request = null ): void {
+	if ( devenia_mcp_updater_is_rollout_health_request( $health_request ) ) {
+		return;
+	}
+	$pending = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
+	$pending = is_array( $pending ) ? array_keys( $pending ) : array();
+	$changed = array_values(
+		array_unique( array_merge( (array) ( $GLOBALS['devenia_mcp_updater_rollout_changed'] ?? array() ), array_map( 'strval', $pending ) ) )
+	);
+	if ( empty( $changed ) ) {
+		return;
+	}
+	$GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
+	devenia_mcp_updater_record_rollout_receipts( array( 'type' => 'plugin', 'plugins' => $changed ) );
+}
+add_action( 'shutdown', 'devenia_mcp_updater_flush_rollout_receipts', PHP_INT_MAX );
 
 /** Capture per-site prior identity and activation before WordPress replaces files. */
 function devenia_mcp_updater_capture_preinstall( $response, array $hook_extra ) {
@@ -706,6 +747,183 @@ function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void 
 	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array_slice( $receipts, -100 ), false );
 	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, $pending, false );
 }
+
+/**
+ * Append a fresh terminal receipt when 0.1.9 observed an active plugin during
+ * the upgrader hook before its update caller restored the prior active state.
+ * The failed receipt remains immutable audit history; reconciliation requires
+ * exact current manifest, package, version, activation, and live-site evidence.
+ */
+function devenia_mcp_updater_reconcile_activation_timing_receipts( string $claim_token ): bool {
+	$receipts = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array() );
+	$receipts = is_array( $receipts ) ? $receipts : array();
+	if ( empty( $receipts ) ) {
+		return true;
+	}
+	$candidates = array();
+	$seen       = array();
+	for ( $index = count( $receipts ) - 1; $index >= 0; $index-- ) {
+		$receipt = $receipts[ $index ] ?? null;
+		$plugin_file = is_array( $receipt ) ? (string) ( $receipt['plugin'] ?? '' ) : '';
+		if ( '' === $plugin_file || isset( $seen[ $plugin_file ] ) ) {
+			continue;
+		}
+		$seen[ $plugin_file ] = true;
+		if (
+			'failed' === (string) ( $receipt['status'] ?? '' )
+			&& 'prior_version_activation_or_live_site_invariant_failed' === (string) ( $receipt['health'] ?? '' )
+			&& true === ( $receipt['priorStateCaptured'] ?? null )
+			&& true === ( $receipt['priorActive'] ?? null )
+			&& false === ( $receipt['active'] ?? null )
+			&& false === ( $receipt['activationPreserved'] ?? null )
+			&& 200 <= (int) ( $receipt['healthHttpStatus'] ?? 0 )
+			&& 400 > (int) ( $receipt['healthHttpStatus'] ?? 0 )
+			&& '' !== (string) ( $receipt['newVersion'] ?? '' )
+			&& hash_equals( (string) $receipt['newVersion'], (string) ( $receipt['actualVersion'] ?? '' ) )
+		) {
+			$candidates[] = $receipt;
+		}
+	}
+	if ( empty( $candidates ) ) {
+		return true;
+	}
+	$managed = devenia_mcp_updater_manifest_plugins();
+	if ( empty( $managed ) ) {
+		return false;
+	}
+	devenia_mcp_updater_require_plugin_helpers();
+	wp_clean_plugins_cache( true );
+	$installed = get_plugins();
+	$eligible  = array();
+	foreach ( $candidates as $receipt ) {
+		$plugin_file = (string) $receipt['plugin'];
+		$entry = is_array( $managed[ $plugin_file ] ?? null ) ? $managed[ $plugin_file ] : array();
+		$current_version = (string) ( $installed[ $plugin_file ]['Version'] ?? '' );
+		$current_active  = is_plugin_active( $plugin_file );
+		if (
+			(bool) $receipt['priorActive'] !== $current_active
+			|| '' === $current_version
+			|| ! hash_equals( (string) ( $receipt['newVersion'] ?? '' ), $current_version )
+			|| ! hash_equals( (string) ( $entry['version'] ?? '' ), $current_version )
+			|| ! hash_equals( (string) ( $receipt['packageSha256'] ?? '' ), (string) ( $entry['sha256'] ?? '' ) )
+		) {
+			continue;
+		}
+		$eligible[] = array( 'receipt' => $receipt, 'active' => $current_active );
+	}
+	if ( empty( $eligible ) ) {
+		return true;
+	}
+	if ( ! devenia_mcp_updater_receipt_migration_claim_is_current( $claim_token ) ) {
+		return false;
+	}
+	$health_response = wp_remote_get(
+		add_query_arg( 'devenia_rollout_health', (string) time(), home_url( '/' ) ),
+		array( 'timeout' => 10, 'redirection' => 2, 'headers' => array( 'Cache-Control' => 'no-cache' ) )
+	);
+	$health_code = is_wp_error( $health_response ) ? 0 : (int) wp_remote_retrieve_response_code( $health_response );
+	if ( 200 > $health_code || 400 <= $health_code ) {
+		return false;
+	}
+	if ( ! devenia_mcp_updater_receipt_migration_claim_is_current( $claim_token ) ) {
+		return false;
+	}
+	foreach ( $eligible as $candidate ) {
+		$prior = $candidate['receipt'];
+		$reconciled = array_merge(
+			$prior,
+			array(
+				'active'                    => (bool) $candidate['active'],
+				'activationPreserved'       => true,
+				'health'                    => 'plugin_identity_activation_and_live_site_health_passed',
+				'healthHttpStatus'          => $health_code,
+				'status'                    => 'passed',
+				'reconciledFromCompletedAt' => (string) ( $prior['completedAt'] ?? '' ),
+				'completedAt'               => gmdate( 'c' ),
+			)
+		);
+		$receipts[] = $reconciled;
+		devenia_mcp_updater_record_status( 'rollout_passed', 'Terminal managed-plugin rollout receipt reconciled after caller activation.', array( 'rollout' => $reconciled ) );
+	}
+	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array_slice( $receipts, -100 ), false );
+	return true;
+}
+
+/** Whether the caller still owns the one non-expiring migration claim. */
+function devenia_mcp_updater_receipt_migration_claim_is_current( string $claim_token ): bool {
+	$lock = get_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION );
+	return is_array( $lock ) && '' !== $claim_token && hash_equals( $claim_token, (string) ( $lock['token'] ?? '' ) );
+}
+
+/** Detect the updater's own same-site health request at every reentrant seam. */
+function devenia_mcp_updater_is_rollout_health_request( ?bool $override = null ): bool {
+	return null === $override
+		? null !== filter_input( INPUT_GET, 'devenia_rollout_health' )
+		: $override;
+}
+
+/**
+ * Run the legacy receipt repair as one bounded, claimed migration. The optional
+ * argument exists for the standalone contract; normal WordPress calls omit it.
+ */
+function devenia_mcp_updater_maybe_migrate_activation_timing_receipts( ?bool $health_request = null ): void {
+	$state = get_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION, array() );
+	$state = is_array( $state ) ? $state : array();
+	$now   = time();
+	if (
+		devenia_mcp_updater_is_rollout_health_request( $health_request )
+		|| in_array( (string) ( $state['status'] ?? '' ), array( 'complete', 'blocked' ), true )
+		|| $now < (int) ( $state['not_before'] ?? 0 )
+	) {
+		return;
+	}
+	$token = wp_generate_uuid4();
+	$lock  = array( 'token' => $token, 'claimed_at' => gmdate( 'c', $now ) );
+	if ( ! add_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION, $lock, '', false ) ) {
+		return;
+	}
+	try {
+		$state_after_claim = get_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION, array() );
+		$state_after_claim = is_array( $state_after_claim ) ? $state_after_claim : array();
+		if (
+			in_array( (string) ( $state_after_claim['status'] ?? '' ), array( 'complete', 'blocked' ), true )
+			|| $now < (int) ( $state_after_claim['not_before'] ?? 0 )
+		) {
+			return;
+		}
+		$attempt = (int) ( $state_after_claim['attempts'] ?? 0 ) + 1;
+		$passed  = devenia_mcp_updater_reconcile_activation_timing_receipts( $token );
+		if ( ! devenia_mcp_updater_receipt_migration_claim_is_current( $token ) ) {
+			return;
+		}
+		if ( $passed ) {
+			update_option(
+				DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION,
+				array( 'status' => 'complete', 'attempts' => $attempt, 'completed_at' => gmdate( 'c', $now ) ),
+				false
+			);
+		} else {
+			$delays = array( 3600, 21600, 86400 );
+			$blocked = 3 <= $attempt;
+			update_option(
+				DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION,
+				array(
+					'status'     => $blocked ? 'blocked' : 'retry_wait',
+					'attempts'   => $attempt,
+					'not_before' => $blocked ? 0 : $now + $delays[ min( $attempt - 1, count( $delays ) - 1 ) ],
+					'updated_at' => gmdate( 'c', $now ),
+				),
+				false
+			);
+		}
+	} finally {
+		$current_lock = get_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION );
+		if ( is_array( $current_lock ) && hash_equals( $token, (string) ( $current_lock['token'] ?? '' ) ) ) {
+			delete_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION );
+		}
+	}
+}
+add_action( 'init', 'devenia_mcp_updater_maybe_migrate_activation_timing_receipts', 100 );
 
 /**
  * Add private MCP plugin updates to WordPress' normal plugin update transient.
