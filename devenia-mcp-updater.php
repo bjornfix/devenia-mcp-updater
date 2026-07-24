@@ -31,13 +31,25 @@ if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_KEY_ID' ) ) {
 }
 define( 'DEVENIA_MCP_UPDATER_STATUS_OPTION', 'devenia_mcp_updater_status' );
 define( 'DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION', 'devenia_mcp_updater_rollout_receipts' );
-define( 'DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION', 'devenia_mcp_updater_rollout_pending' );
+define( 'DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_PREFIX', 'devenia_mcp_updater_rollout_pending_' );
+define( 'DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPT_PREFIX', 'devenia_mcp_updater_rollout_receipt_' );
 define( 'DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT', 'devenia_mcp_updater_legacy_reconcile_v1' );
 define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION', 'devenia_mcp_updater_receipt_migration_v1' );
 define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION', 'devenia_mcp_updater_receipt_migration_lock_v1' );
 
 /** @var string[] Managed plugin files awaiting request-terminal rollout evidence. */
 $GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
+$GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'] = array();
+
+/** One request-owned key prevents predecessor/successor pending replacement. */
+function devenia_mcp_updater_rollout_pending_key( string $rollout_id ): string {
+	return DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_PREFIX . hash( 'sha256', $rollout_id );
+}
+
+/** One immutable terminal key makes the shared receipt list a read model only. */
+function devenia_mcp_updater_rollout_receipt_key( string $rollout_id ): string {
+	return DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPT_PREFIX . hash( 'sha256', $rollout_id );
+}
 
 /**
  * Fetch and cache the private MCP manifest.
@@ -626,6 +638,30 @@ function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra 
 }
 add_action( 'upgrader_process_complete', 'devenia_mcp_updater_after_plugin_upgrade', 10, 2 );
 
+/**
+ * Finalize one pending active-plugin rollout only after WordPress reactivation.
+ *
+ * Shutdown remains the fallback for plugins whose prior state was inactive.
+ *
+ * @param string $plugin_file Activated plugin file.
+ * @param bool   $network_wide Whether network activation was requested.
+ * @return void
+ */
+function devenia_mcp_updater_after_plugin_activation( string $plugin_file, bool $network_wide = false ): void {
+	unset( $network_wide );
+	$prior = $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] ?? null;
+	if ( ! is_array( $prior ) || '' === (string) ( $prior['rolloutId'] ?? '' ) ) {
+		return;
+	}
+	$finalized = devenia_mcp_updater_record_rollout_receipts( array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+	if ( in_array( $plugin_file, $finalized, true ) ) {
+		$GLOBALS['devenia_mcp_updater_rollout_changed'] = array_values(
+			array_diff( (array) ( $GLOBALS['devenia_mcp_updater_rollout_changed'] ?? array() ), array( $plugin_file ) )
+		);
+	}
+}
+add_action( 'activated_plugin', 'devenia_mcp_updater_after_plugin_activation', PHP_INT_MAX, 2 );
+
 /** Queue changed plugin files until callers have restored their activation state. */
 function devenia_mcp_updater_schedule_rollout_receipts( array $hook_extra ): void {
 	$changed = array();
@@ -641,23 +677,22 @@ function devenia_mcp_updater_schedule_rollout_receipts( array $hook_extra ): voi
 }
 
 /**
- * Finalize durable rollout evidence after the update caller has reactivated
- * plugins, or on the next request when an earlier request ended prematurely.
+ * Finalize durable rollout evidence owned by this exact update request.
+ *
+ * Durable pending rows from another request remain fail-closed; merging them
+ * here would let an unrelated concurrent shutdown observe transient
+ * deactivation and manufacture a false terminal receipt.
  */
 function devenia_mcp_updater_flush_rollout_receipts( ?bool $health_request = null ): void {
 	if ( devenia_mcp_updater_is_rollout_health_request( $health_request ) ) {
 		return;
 	}
-	$pending = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
-	$pending = is_array( $pending ) ? array_keys( $pending ) : array();
-	$changed = array_values(
-		array_unique( array_merge( (array) ( $GLOBALS['devenia_mcp_updater_rollout_changed'] ?? array() ), array_map( 'strval', $pending ) ) )
-	);
+	$changed = array_values( array_unique( array_map( 'strval', (array) ( $GLOBALS['devenia_mcp_updater_rollout_changed'] ?? array() ) ) ) );
 	if ( empty( $changed ) ) {
 		return;
 	}
-	$GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
-	devenia_mcp_updater_record_rollout_receipts( array( 'type' => 'plugin', 'plugins' => $changed ) );
+	$finalized = devenia_mcp_updater_record_rollout_receipts( array( 'type' => 'plugin', 'plugins' => $changed ) );
+	$GLOBALS['devenia_mcp_updater_rollout_changed'] = array_values( array_diff( $changed, $finalized ) );
 }
 add_action( 'shutdown', 'devenia_mcp_updater_flush_rollout_receipts', PHP_INT_MAX );
 
@@ -672,23 +707,40 @@ function devenia_mcp_updater_capture_preinstall( $response, array $hook_extra ) 
 	$managed     = devenia_mcp_updater_manifest_plugins();
 	if ( '' !== $plugin_file && isset( $installed[ $plugin_file ], $managed[ $plugin_file ] ) ) {
 		$prior = array(
+			'rolloutId' => wp_generate_uuid4(),
 			'version' => (string) ( $installed[ $plugin_file ]['Version'] ?? '' ),
 			'active'  => is_plugin_active( $plugin_file ),
 			'manifestEntry' => $managed[ $plugin_file ],
 			'capturedAt' => gmdate( 'c' ),
 		);
 		$GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] = $prior;
-		$pending = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
-		$pending = is_array( $pending ) ? $pending : array();
-		$pending[ $plugin_file ] = $prior;
-		update_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, $pending, false );
+		update_option( devenia_mcp_updater_rollout_pending_key( (string) $prior['rolloutId'] ), $prior, false );
 	}
 	return $response;
 }
 add_filter( 'upgrader_pre_install', 'devenia_mcp_updater_capture_preinstall', 10, 2 );
 
-/** Record terminal rollout identity and health after a managed plugin update. */
-function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void {
+/** Persist one request-owned terminal receipt before consuming pending authority. */
+function devenia_mcp_updater_persist_terminal_receipt( array $receipt ): bool {
+	$rollout_id = (string) ( $receipt['rolloutId'] ?? '' );
+	if ( '' === $rollout_id ) {
+		return false;
+	}
+	$key = devenia_mcp_updater_rollout_receipt_key( $rollout_id );
+	$existing = get_option( $key );
+	if ( false !== $existing ) {
+		return $receipt === $existing;
+	}
+	add_option( $key, $receipt, '', false );
+	return $receipt === get_option( $key );
+}
+
+/**
+ * Record terminal rollout identity and health after a managed plugin update.
+ *
+ * @return string[] Exactly finalized plugin files.
+ */
+function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): array {
 	devenia_mcp_updater_require_plugin_helpers();
 	$changed = array();
 	if ( isset( $hook_extra['plugin'] ) && is_string( $hook_extra['plugin'] ) ) {
@@ -699,8 +751,6 @@ function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void 
 	}
 	$changed   = array_values( array_unique( $changed ) );
 	$installed = get_plugins();
-	$pending   = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, array() );
-	$pending   = is_array( $pending ) ? $pending : array();
 	$health_response = wp_remote_get(
 		add_query_arg( 'devenia_rollout_health', (string) time(), home_url( '/' ) ),
 		array( 'timeout' => 10, 'redirection' => 2, 'headers' => array( 'Cache-Control' => 'no-cache' ) )
@@ -709,10 +759,17 @@ function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void 
 	$site_healthy = 200 <= $health_code && 400 > $health_code;
 	$receipts  = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array() );
 	$receipts  = is_array( $receipts ) ? $receipts : array();
+	$finalized = array();
 	foreach ( $changed as $plugin_file ) {
 		$prior = is_array( $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] ?? null )
 			? $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]
-			: ( is_array( $pending[ $plugin_file ] ?? null ) ? $pending[ $plugin_file ] : array() );
+			: array();
+		$rollout_id = (string) ( $prior['rolloutId'] ?? '' );
+		$pending_key = devenia_mcp_updater_rollout_pending_key( $rollout_id );
+		$pending = '' !== $rollout_id ? get_option( $pending_key ) : false;
+		if ( ! is_array( $pending ) || $prior !== $pending ) {
+			continue;
+		}
 		$entry = is_array( $prior['manifestEntry'] ?? null ) ? $prior['manifestEntry'] : array();
 		if ( empty( $entry ) ) {
 			continue;
@@ -722,30 +779,40 @@ function devenia_mcp_updater_record_rollout_receipts( array $hook_extra ): void 
 		$version_ok     = '' !== $actual_version && hash_equals( (string) $entry['version'], $actual_version );
 		$prior_captured = array_key_exists( 'active', $prior ) && '' !== (string) ( $prior['version'] ?? '' );
 		$activation_preserved = $prior_captured && (bool) $prior['active'] === $active;
-		$receipt = array(
-			'schemaVersion'   => 1,
-			'site'            => home_url( '/' ),
-			'plugin'          => $plugin_file,
-			'priorVersion'    => (string) ( $prior['version'] ?? '' ),
-			'newVersion'      => (string) $entry['version'],
-			'actualVersion'   => $actual_version,
-			'packageSha256'   => (string) $entry['sha256'],
-			'active'          => $active,
-			'priorActive'     => array_key_exists( 'active', $prior ) ? (bool) $prior['active'] : null,
-			'activationPreserved' => $activation_preserved,
-			'priorStateCaptured' => $prior_captured,
-			'health'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'plugin_identity_activation_and_live_site_health_passed' : 'prior_version_activation_or_live_site_invariant_failed',
-			'healthHttpStatus' => $health_code,
-			'rollback'        => is_array( $entry['rollback'] ?? null ) ? $entry['rollback'] : array( 'available' => false ),
-			'status'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'passed' : 'failed',
-			'completedAt'     => gmdate( 'c' ),
-		);
+		$receipt = $GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'][ $plugin_file ] ?? null;
+		if ( ! is_array( $receipt ) || $rollout_id !== (string) ( $receipt['rolloutId'] ?? '' ) ) {
+			$receipt = array(
+				'schemaVersion'   => 1,
+				'rolloutId'       => $rollout_id,
+				'site'            => home_url( '/' ),
+				'plugin'          => $plugin_file,
+				'priorVersion'    => (string) ( $prior['version'] ?? '' ),
+				'newVersion'      => (string) $entry['version'],
+				'actualVersion'   => $actual_version,
+				'packageSha256'   => (string) $entry['sha256'],
+				'active'          => $active,
+				'priorActive'     => array_key_exists( 'active', $prior ) ? (bool) $prior['active'] : null,
+				'activationPreserved' => $activation_preserved,
+				'priorStateCaptured' => $prior_captured,
+				'health'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'plugin_identity_activation_and_live_site_health_passed' : 'prior_version_activation_or_live_site_invariant_failed',
+				'healthHttpStatus' => $health_code,
+				'rollback'        => is_array( $entry['rollback'] ?? null ) ? $entry['rollback'] : array( 'available' => false ),
+				'status'          => $version_ok && $prior_captured && $activation_preserved && $site_healthy ? 'passed' : 'failed',
+				'completedAt'     => gmdate( 'c' ),
+			);
+			$GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'][ $plugin_file ] = $receipt;
+		}
+		if ( ! devenia_mcp_updater_persist_terminal_receipt( $receipt ) ) {
+			continue;
+		}
 		$receipts[] = $receipt;
-		unset( $pending[ $plugin_file ], $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] );
+		delete_option( $pending_key );
+		unset( $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ], $GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'][ $plugin_file ] );
+		$finalized[] = $plugin_file;
 		devenia_mcp_updater_record_status( 'passed' === $receipt['status'] ? 'rollout_passed' : 'rollout_failed', 'Terminal managed-plugin rollout receipt recorded.', array( 'rollout' => $receipt ) );
 	}
 	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array_slice( $receipts, -100 ), false );
-	update_option( DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION, $pending, false );
+	return $finalized;
 }
 
 /**
@@ -830,18 +897,41 @@ function devenia_mcp_updater_reconcile_activation_timing_receipts( string $claim
 	}
 	foreach ( $eligible as $candidate ) {
 		$prior = $candidate['receipt'];
-		$reconciled = array_merge(
-			$prior,
-			array(
-				'active'                    => (bool) $candidate['active'],
-				'activationPreserved'       => true,
-				'health'                    => 'plugin_identity_activation_and_live_site_health_passed',
-				'healthHttpStatus'          => $health_code,
-				'status'                    => 'passed',
-				'reconciledFromCompletedAt' => (string) ( $prior['completedAt'] ?? '' ),
-				'completedAt'               => gmdate( 'c' ),
-			)
+		$rollout_id = 'reconciliation-' . hash(
+			'sha256',
+			implode( '|', array( (string) ( $prior['rolloutId'] ?? '' ), (string) ( $prior['plugin'] ?? '' ), (string) ( $prior['priorVersion'] ?? '' ), (string) ( $prior['newVersion'] ?? '' ), (string) ( $prior['packageSha256'] ?? '' ), (string) ( $prior['completedAt'] ?? '' ) ) )
 		);
+		$existing_reconciliation = get_option( devenia_mcp_updater_rollout_receipt_key( $rollout_id ) );
+		if ( is_array( $existing_reconciliation ) ) {
+			$reconciled = $existing_reconciliation;
+			if (
+				$rollout_id !== (string) ( $reconciled['rolloutId'] ?? '' )
+				|| (string) ( $prior['plugin'] ?? '' ) !== (string) ( $reconciled['plugin'] ?? '' )
+				|| (string) ( $prior['newVersion'] ?? '' ) !== (string) ( $reconciled['newVersion'] ?? '' )
+				|| (string) ( $prior['packageSha256'] ?? '' ) !== (string) ( $reconciled['packageSha256'] ?? '' )
+				|| (string) ( $prior['completedAt'] ?? '' ) !== (string) ( $reconciled['reconciledFromCompletedAt'] ?? '' )
+				|| 'passed' !== (string) ( $reconciled['status'] ?? '' )
+			) {
+				return false;
+			}
+		} else {
+			$reconciled = array_merge(
+				$prior,
+				array(
+					'rolloutId'                 => $rollout_id,
+					'active'                    => (bool) $candidate['active'],
+					'activationPreserved'       => true,
+					'health'                    => 'plugin_identity_activation_and_live_site_health_passed',
+					'healthHttpStatus'          => $health_code,
+					'status'                    => 'passed',
+					'reconciledFromCompletedAt' => (string) ( $prior['completedAt'] ?? '' ),
+					'completedAt'               => gmdate( 'c' ),
+				)
+			);
+		}
+		if ( ! devenia_mcp_updater_persist_terminal_receipt( $reconciled ) ) {
+			return false;
+		}
 		$receipts[] = $reconciled;
 		devenia_mcp_updater_record_status( 'rollout_passed', 'Terminal managed-plugin rollout receipt reconciled after caller activation.', array( 'rollout' => $reconciled ) );
 	}

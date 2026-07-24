@@ -119,7 +119,7 @@ If you skip base-stack verification and start with add-ons immediately, troubles
 
 ### 0.1.10
 
-- Finalizes rollout receipts after the update caller has restored the prior activation state.
+- Finalizes active-plugin rollout receipts from WordPress' post-activation event, after the update caller has restored the prior activation state; shutdown remains the inactive-plugin fallback.
 - Reconciles preserved timing-failure receipts only when exact manifest, package, version, activation, and live-site evidence now pass.
 
 ### 0.1.9

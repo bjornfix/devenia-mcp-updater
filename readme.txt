@@ -83,7 +83,7 @@ The updater records a manifest error status and leaves the installed plugins unc
 == Changelog ==
 
 = 0.1.10 =
-* Finalize managed-plugin rollout receipts after the update caller has restored the prior activation state.
+* Finalize active-plugin rollout receipts from WordPress' post-activation event after the update caller restores activation; keep shutdown as the inactive-plugin fallback.
 * Reconcile preserved timing-failure receipts only against exact current manifest, package, version, activation, and live-site evidence.
 
 = 0.1.9 =

@@ -26,6 +26,8 @@ $GLOBALS['fixture_active'] = array();
 $GLOBALS['fixture_health_code'] = 200;
 $GLOBALS['fixture_health_requests'] = 0;
 $GLOBALS['fixture_nested_shutdown_on_health'] = false;
+$GLOBALS['fixture_uuid'] = 0;
+$GLOBALS['fixture_fail_option_key'] = '';
 
 function add_action( ...$args ): void { unset( $args ); }
 function add_filter( ...$args ): void { unset( $args ); }
@@ -53,11 +55,11 @@ function get_site_transient( string $key ) {
 	return 'update_plugins' === $key ? $GLOBALS['fixture_updates'] : false;
 }
 function set_site_transient( ...$args ): void { unset( $args ); }
-function update_option( $key, $value, ...$args ): bool { unset( $args ); $GLOBALS['fixture_options'][ $key ] = $value; return true; }
-function add_option( $key, $value, ...$args ): bool { unset( $args ); if ( array_key_exists( $key, $GLOBALS['fixture_options'] ) ) return false; $GLOBALS['fixture_options'][ $key ] = $value; return true; }
+function update_option( $key, $value, ...$args ): bool { unset( $args ); if ( $key === $GLOBALS['fixture_fail_option_key'] ) return false; $GLOBALS['fixture_options'][ $key ] = $value; return true; }
+function add_option( $key, $value, ...$args ): bool { unset( $args ); if ( $key === $GLOBALS['fixture_fail_option_key'] || array_key_exists( $key, $GLOBALS['fixture_options'] ) ) return false; $GLOBALS['fixture_options'][ $key ] = $value; return true; }
 function delete_option( $key ): bool { if ( ! array_key_exists( $key, $GLOBALS['fixture_options'] ) ) return false; unset( $GLOBALS['fixture_options'][ $key ] ); return true; }
 function get_option( $key, $default = false ) { return $GLOBALS['fixture_options'][ $key ] ?? $default; }
-function wp_generate_uuid4(): string { return '00000000-0000-4000-8000-' . str_pad( (string) count( $GLOBALS['fixture_options'] ), 12, '0', STR_PAD_LEFT ); }
+function wp_generate_uuid4(): string { $GLOBALS['fixture_uuid']++; return '00000000-0000-4000-8000-' . str_pad( (string) $GLOBALS['fixture_uuid'], 12, '0', STR_PAD_LEFT ); }
 function wp_clean_plugins_cache( ...$args ): void { unset( $args ); }
 function wp_update_plugins(): void {}
 function get_plugins(): array { return $GLOBALS['fixture_installed']; }
@@ -211,6 +213,7 @@ if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_update( false, $plugi
 $plugins[0]['autoUpdate'] = true;
 $GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
 devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+$pending_key = devenia_mcp_updater_rollout_pending_key( (string) $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]['rolloutId'] );
 $GLOBALS['fixture_manifest'] = array( 'unavailable_after_files_changed' => true );
 $GLOBALS['fixture_active'][ $plugin_file ] = false;
 devenia_mcp_updater_after_plugin_upgrade( null, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
@@ -221,42 +224,86 @@ $health_before_child_shutdown = $GLOBALS['fixture_health_requests'];
 devenia_mcp_updater_flush_rollout_receipts( true );
 if (
 	! empty( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array() )
-	|| empty( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION ] ?? array() )
+	|| empty( $GLOBALS['fixture_options'][ $pending_key ] ?? array() )
 	|| $health_before_child_shutdown !== $GLOBALS['fixture_health_requests']
 ) {
 	throw new RuntimeException( 'The updater health child request recursively finalized its parent pending receipt.' );
 }
 $GLOBALS['fixture_active'][ $plugin_file ] = true;
 $GLOBALS['fixture_nested_shutdown_on_health'] = true;
-devenia_mcp_updater_flush_rollout_receipts( false );
+$other_pending_key = devenia_mcp_updater_rollout_pending_key( 'other-rollout-id' );
+$GLOBALS['fixture_options'][ $other_pending_key ] = array( 'version' => '1.0.0', 'active' => true );
+devenia_mcp_updater_after_plugin_activation( $plugin_file );
 $GLOBALS['fixture_nested_shutdown_on_health'] = false;
 $receipts = $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array();
 $rollout = end( $receipts );
 if ( ! is_array( $rollout ) || 'passed' !== ( $rollout['status'] ?? '' ) || 200 !== ( $rollout['healthHttpStatus'] ?? 0 ) || $health_before_child_shutdown + 1 !== $GLOBALS['fixture_health_requests'] ) {
-	throw new RuntimeException( 'Terminal rollout receipt did not bind pre-install authority, exact identity, activation, and live HTTP health.' );
+	throw new RuntimeException( 'The post-activation Adapter did not bind pre-install authority, exact identity, activation, and live HTTP health.' );
 }
-if ( ! empty( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION ] ?? array() ) ) {
+if ( false !== get_option( $pending_key ) ) {
 	throw new RuntimeException( 'Terminal rollout did not consume its durable pending intent.' );
 }
+if ( array( 'version' => '1.0.0', 'active' => true ) !== get_option( $other_pending_key ) ) {
+	throw new RuntimeException( 'One plugin receipt finalization overwrote unrelated durable pending authority.' );
+}
+unset( $GLOBALS['fixture_options'][ $other_pending_key ] );
 $active_rollout = $rollout;
-
-$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array();
-$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION ] = array();
-$GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
-$GLOBALS['fixture_active'][ $plugin_file ] = true;
-devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
-$GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
-devenia_mcp_updater_flush_rollout_receipts();
-$recovered_pending_receipts = $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array();
-if ( 1 !== count( $recovered_pending_receipts ) || 'passed' !== ( $recovered_pending_receipts[0]['status'] ?? '' ) ) {
-	throw new RuntimeException( 'A later request did not recover and finalize durable pending rollout evidence.' );
+$mutated_active_rollout = $active_rollout;
+$mutated_active_rollout['status'] = 'failed';
+if (
+	devenia_mcp_updater_persist_terminal_receipt( $mutated_active_rollout )
+	|| $active_rollout !== get_option( devenia_mcp_updater_rollout_receipt_key( (string) $active_rollout['rolloutId'] ) )
+) {
+	throw new RuntimeException( 'A retry mutated an existing terminal receipt for the same rollout identity.' );
 }
 
 $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array();
-$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_PENDING_OPTION ] = array();
 $GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
 $GLOBALS['fixture_active'][ $plugin_file ] = false;
 devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+$failed_persist_rollout_id = (string) $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]['rolloutId'];
+$failed_persist_pending_key = devenia_mcp_updater_rollout_pending_key( $failed_persist_rollout_id );
+$GLOBALS['fixture_fail_option_key'] = devenia_mcp_updater_rollout_receipt_key( $failed_persist_rollout_id );
+devenia_mcp_updater_after_plugin_upgrade( null, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+devenia_mcp_updater_flush_rollout_receipts();
+if (
+	false === get_option( $failed_persist_pending_key )
+	|| ! in_array( $plugin_file, $GLOBALS['devenia_mcp_updater_rollout_changed'], true )
+	|| ! empty( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array() )
+) {
+	throw new RuntimeException( 'A terminal receipt persistence failure consumed exact pending authority or lost retry work.' );
+}
+$GLOBALS['fixture_fail_option_key'] = '';
+devenia_mcp_updater_flush_rollout_receipts();
+if (
+	false !== get_option( $failed_persist_pending_key )
+	|| false === get_option( devenia_mcp_updater_rollout_receipt_key( $failed_persist_rollout_id ) )
+) {
+	throw new RuntimeException( 'Retry did not persist terminal authority before consuming its exact pending record.' );
+}
+
+$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array();
+unset( $GLOBALS['fixture_options'][ $pending_key ] );
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
+$GLOBALS['fixture_active'][ $plugin_file ] = true;
+devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+$pending_key = devenia_mcp_updater_rollout_pending_key( (string) $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]['rolloutId'] );
+$GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
+devenia_mcp_updater_flush_rollout_receipts();
+$recovered_pending_receipts = $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array();
+if (
+	! empty( $recovered_pending_receipts )
+	|| empty( $GLOBALS['fixture_options'][ $pending_key ] ?? array() )
+) {
+	throw new RuntimeException( 'An unrelated request finalized durable pending rollout evidence without owning the update request.' );
+}
+
+$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array();
+unset( $GLOBALS['fixture_options'][ $pending_key ] );
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
+$GLOBALS['fixture_active'][ $plugin_file ] = false;
+devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+$pending_key = devenia_mcp_updater_rollout_pending_key( (string) $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]['rolloutId'] );
 devenia_mcp_updater_after_plugin_upgrade( null, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
 devenia_mcp_updater_flush_rollout_receipts();
 $inactive_receipts = $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array();
@@ -270,6 +317,10 @@ $timing_failure['activationPreserved'] = false;
 $timing_failure['health'] = 'prior_version_activation_or_live_site_invariant_failed';
 $timing_failure['status'] = 'failed';
 $timing_failure['completedAt'] = '2026-07-22T23:50:14+00:00';
+$timing_failure['rolloutId'] = 'legacy-timing-failure';
+if ( ! devenia_mcp_updater_persist_terminal_receipt( $timing_failure ) ) {
+	throw new RuntimeException( 'Could not persist the immutable failed timing receipt fixture.' );
+}
 $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array( $timing_failure );
 $GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
 $GLOBALS['fixture_active'][ $plugin_file ] = true;
@@ -294,6 +345,8 @@ if (
 	2 !== count( $reconciled_receipts )
 	|| ! is_array( $reconciled )
 	|| 'passed' !== ( $reconciled['status'] ?? '' )
+	|| $reconciled !== get_option( devenia_mcp_updater_rollout_receipt_key( (string) ( $reconciled['rolloutId'] ?? '' ) ) )
+	|| $timing_failure !== get_option( devenia_mcp_updater_rollout_receipt_key( 'legacy-timing-failure' ) )
 	|| '2026-07-22T23:50:14+00:00' !== ( $reconciled['reconciledFromCompletedAt'] ?? '' )
 	|| true !== ( $reconciled['activationPreserved'] ?? false )
 	|| 'complete' !== ( get_option( DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION )['status'] ?? '' )
@@ -305,6 +358,19 @@ if (
 devenia_mcp_updater_maybe_migrate_activation_timing_receipts( false );
 if ( 2 !== count( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array() ) || $health_before_migration + 1 !== $GLOBALS['fixture_health_requests'] ) {
 	throw new RuntimeException( 'Terminal receipt reconciliation was not idempotent.' );
+}
+$GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] = array( $timing_failure );
+unset( $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION ] );
+$health_before_partial_retry = $GLOBALS['fixture_health_requests'];
+devenia_mcp_updater_maybe_migrate_activation_timing_receipts( false );
+$partial_retry_receipts = $GLOBALS['fixture_options'][ DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION ] ?? array();
+$partial_retry_reconciled = end( $partial_retry_receipts );
+if (
+	2 !== count( $partial_retry_receipts )
+	|| $reconciled !== $partial_retry_reconciled
+	|| $health_before_partial_retry + 1 !== $GLOBALS['fixture_health_requests']
+) {
+	throw new RuntimeException( 'A retry after partial reconciliation did not reuse the exact immutable terminal receipt.' );
 }
 
 $not_timing_failure = $timing_failure;
