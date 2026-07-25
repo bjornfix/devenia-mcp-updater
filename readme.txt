@@ -59,7 +59,7 @@ No. It manages only the Devenia plugin files explicitly listed by the update cha
 
 = Does it depend on GitHub or another Git host? =
 
-No. New Git-backed package identities use the locally controlled commit, tree, and repository path. External Git hosting is not required for update discovery, package delivery, or continued operation.
+No. External Git hosting is not required for update discovery, package delivery, or continued operation.
 
 = What happens when update information is unavailable? =
 
