@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.10
+ * Version: 0.1.11
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.10' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.11' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -266,26 +266,75 @@ function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exceptio
 	return true;
 }
 
-/** Validate an authenticated schema-2 source identity. */
-function devenia_mcp_updater_release_identity_source_is_valid( array $source ): bool {
+/** Validate an authenticated adapter-specific source identity. */
+function devenia_mcp_updater_release_identity_source_is_valid( array $source, int $schema_version ): bool {
 	$adapter = (string) ( $source['adapter'] ?? '' );
 	if ( 'wordpress-org-svn' === $adapter ) {
-		return 1 === preg_match( '#^https://plugins\.svn\.wordpress\.org/[a-z0-9-]+/(?:trunk|tags/[^/]+)$#', (string) ( $source['url'] ?? '' ) )
+		$source_keys = array_keys( $source );
+		sort( $source_keys );
+		return ( 3 !== $schema_version || array( 'adapter', 'revision', 'url' ) === $source_keys )
+			&& 1 === preg_match( '#^https://plugins\.svn\.wordpress\.org/[a-z0-9-]+/(?:trunk|tags/[^/]+)$#', (string) ( $source['url'] ?? '' ) )
 			&& 1 === preg_match( '/^[1-9][0-9]*$/', (string) ( $source['revision'] ?? '' ) );
 	}
 	if ( 'local-filesystem' === $adapter ) {
-		return 1 === preg_match( '/^[a-f0-9]{64}$/', (string) ( $source['snapshotSha256'] ?? '' ) );
+		$source_keys = array_keys( $source );
+		sort( $source_keys );
+		return ( 3 !== $schema_version || array( 'adapter', 'snapshotSha256' ) === $source_keys )
+			&& 1 === preg_match( '/^[a-f0-9]{64}$/', (string) ( $source['snapshotSha256'] ?? '' ) );
 	}
 	if ( 'git' !== $adapter ) {
 		return false;
 	}
-	$path   = (string) ( $source['path'] ?? '' );
-	$remote = $source['remote'] ?? null;
-	return is_string( $remote )
-		&& '' !== $remote
+	if ( 3 === $schema_version ) {
+		$source_keys = array_keys( $source );
+		sort( $source_keys );
+		if ( array( 'adapter', 'commit', 'path', 'tree' ) !== $source_keys ) {
+			return false;
+		}
+	}
+	$path         = (string) ( $source['path'] ?? '' );
+	$legacy_remote = $source['remote'] ?? null;
+	$remote_valid = 2 === $schema_version
+		? is_string( $legacy_remote ) && '' !== $legacy_remote
+		: 3 === $schema_version && ! array_key_exists( 'remote', $source );
+	return $remote_valid
 		&& 1 === preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $source['commit'] ?? '' ) )
 		&& 1 === preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $source['tree'] ?? '' ) )
 		&& 1 === preg_match( '#^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*\\\\)[^:\x00]+$#', $path );
+}
+
+/** Read only exact identities already present in the signed pre-schema-3 manifest. */
+function devenia_mcp_updater_legacy_release_identity_is_readable( array $identity ): bool {
+	$historical_digests = array(
+		'08226e0220c150c4f9eeeedcba42e40772fd51e9d7027de66d9c1350f92a09cf',
+		'c01857481271ca3d753641c32a0966efeb8353d6949835c0e7f329a0078e806f',
+		'3a521584104ba061e1e45e3828d299d3eb12fed0efc87d9bca76f2e68eb04896',
+		'29ce781d647af803c021ccd1eeb084708e818fc09f12c0f58e7c0b8288ee6c9c',
+		'fb25062cd8816a102e04126d63ea79c6d9676c45aac53953a18004ac02c8ba7a',
+		'4591bd1d3b2522155e123029d4b3d13f7fc230011335a42faec33c270f7e336c',
+		'25a8891cf47950630ca032da3176911e88d39d9f973fd17a95e4e92ce2e0b3a0',
+		'fe9aaf7f29479e4a1d7e1b00b607e423c2e124c966e04664f763ea1cd72d790a',
+		'3ec8d28035d60b0371777aba30bd948a49ce0074e460660a6e33cf63a747d40e',
+		'00d180c72fa09d02716df4f74c0516c53dfcb38f75811ce3080ed0781e8ad94a',
+		'a039fc59ecc51aa898f0ccfdf6cd77a8942f12028e931e92afaf4b27b094a25d',
+		'a02cf62c7586a8cb13bdd47bff504d8b4045db5b023a1da0c694899f4fc7d1d2',
+		'e8810b1df39deeb46bc2327a3f4cfad7d311ddd2555c19d39f38671a220fce53',
+		'f2c4942e915746fb26b284b005b0a1cf005fe40713e8a186130368ec94d7ceff',
+		'34c0254774c9c886c6373fdc9ea616176196c348238fdb64bc974a6e86610e1e',
+		'3dc3362a50e9fdc74033d2765e6fa1f329dd092827b76dfcb87fdc72e7166a1e',
+		'6e49b41fb0fc0fa31a836c14d4c58e44f599ad78b8979dafb2279b569e3baffe',
+		'c10c174a02e6c2d11fa3b276e39e45ea05193db7f0c29ecf9a7b280192289e2f',
+		'35c3462d220213fd1beb3b4cf7863154ad6426fdb7cf6153952412e8f76ebffb',
+		'ca60db62f63f6876ee414005f4ce838c9c52fb564bb1605d4f1d1a7c0ed0edf5',
+		'5f69b1d70938b0746e1ada46e6d4b7ea86f55402e88d1a3524fb6a3d54b7b361',
+		'1a7e23d65432753473e9e77bb44050d1b26e491d13b1af49276f4a15f3da3c59',
+		'bb9d764986565bfcfdd286880919282a0963613f91e0cfc7c41edff30905e7f7',
+	);
+	$digest = hash( 'sha256', (string) wp_json_encode( $identity, JSON_UNESCAPED_SLASHES ) );
+	if ( in_array( $digest, $historical_digests, true ) ) {
+		return true;
+	}
+	return false;
 }
 
 /** Validate authenticated release-source and member-manifest provenance fields. */
@@ -303,8 +352,8 @@ function devenia_mcp_updater_release_identity_provenance_is_valid( array $identi
 			|| 1 !== preg_match( '/^[a-f0-9]{40,64}$/', (string) ( $repository['tree'] ?? '' ) ) ) {
 			return false;
 		}
-	} elseif ( 2 === $schema_version ) {
-		if ( ! devenia_mcp_updater_release_identity_source_is_valid( $source ) ) {
+	} elseif ( 2 === $schema_version || 3 === $schema_version ) {
+		if ( ! devenia_mcp_updater_release_identity_source_is_valid( $source, $schema_version ) ) {
 			return false;
 		}
 	} else {
@@ -324,8 +373,10 @@ function devenia_mcp_updater_release_identity_provenance_is_valid( array $identi
 	if ( ! hash_equals( hash( 'sha256', $canonical ), $members_sha256 ) ) {
 		return false;
 	}
-	return 'local-filesystem' !== (string) ( $source['adapter'] ?? '' )
-		|| hash_equals( $members_sha256, (string) ( $source['snapshotSha256'] ?? '' ) );
+	if ( 'local-filesystem' === (string) ( $source['adapter'] ?? '' ) && ! hash_equals( $members_sha256, (string) ( $source['snapshotSha256'] ?? '' ) ) ) {
+		return false;
+	}
+	return 3 === $schema_version || devenia_mcp_updater_legacy_release_identity_is_readable( $identity );
 }
 
 /** Validate the complete canonical Plugin Check runtime fingerprint. */

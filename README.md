@@ -1,202 +1,130 @@
 # Devenia MCP Updater
 
-Private update channel and automatic sync for Devenia MCP and Abilities plugins.
+Keep Devenia-managed WordPress plugins current through a Devenia-controlled update channel.
 
-[![GitHub release](https://img.shields.io/github/v/release/bjornfix/devenia-mcp-updater)](https://github.com/bjornfix/devenia-mcp-updater/releases)
+[![Release 0.1.11](https://img.shields.io/badge/release-0.1.11-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8%2B-blue.svg)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.0
-**Stable tag:** 0.1.10
+
+**Stable tag:** 0.1.11
+
 **License:** GPLv2 or later
-**License URI:** https://www.gnu.org/licenses/gpl-2.0.html
+
+**Tags:** mcp, updates, automation, plugins, self-hosted
 
 ## What It Does
 
-Private update channel and automatic sync for Devenia MCP and Abilities plugins.
+Devenia MCP Updater connects WordPress' native update system to packages published on Devenia-controlled infrastructure. It manages only explicitly listed Devenia plugins and leaves every other plugin alone.
 
-This plugin is part of the Devenia MCP abilities ecosystem. It gives an MCP-capable agent a focused, authenticated way to work with Devenia-managed WordPress plugin updates.
-
-**Example:** "Handle this WordPress maintenance task directly." - The agent can inspect the site, call the relevant ability, and return the result without making the human click through wp-admin for every step.
+- Shows eligible Devenia plugin updates in the normal WordPress update flow.
+- Supports unattended updates for managed plugins.
+- Verifies the signed update list and the exact package hash.
+- Accepts locally anchored package identities without relying on an external Git host.
+- Leaves installed plugins untouched when update information is unavailable or invalid.
 
 ## The Real Workflow
 
-In practice, the human should not have to memorize every ability name.
+1. Install and activate the updater once.
+2. WordPress checks the Devenia update channel during its normal update cycle.
+3. Only listed plugins with valid package information become eligible.
+4. WordPress downloads the package from Devenia infrastructure and verifies its hash.
+5. The normal WordPress plugin update process installs the approved version.
 
-The normal pattern is:
-
-1. install the base MCP stack
-2. install only the add-ons the site actually needs
-3. let the agent discover the available abilities
-4. give the agent a clear task with boundaries
-5. verify the result in WordPress
-
-The human's job is mostly to describe the goal.
-The agent's job is to figure out the mechanics.
+There is no separate settings screen and no external repository account to configure.
 
 ## Why This Feels Different
 
-Most WordPress automation still leaves the repetitive part to the human.
-
-This plugin is different because the agent can act inside the site through a narrow, authenticated ability surface:
-
-- inspect current site state before changing anything
-- run the specific action needed for the task
-- return structured results that are easy to verify
-- keep the workflow inside WordPress instead of a separate checklist
-
-That changes the experience from:
-
-- `Here is what you should do in wp-admin`
-
-to:
-
-- `Tell the agent what needs doing, and let it carry out the work`
+The site does not need to follow releases on a third-party code-hosting platform or copy ZIP files between services. Update discovery and package delivery stay within WordPress and Devenia-controlled infrastructure while using WordPress' familiar update experience.
 
 ## Before vs After
 
 ### Before
 
-- ask the AI what to do
-- copy the answer into WordPress by hand
-- click through wp-admin for the repetitive bits
-- postpone maintenance because the task is tedious
+- Watch several external release channels.
+- Download and upload plugin ZIPs manually.
+- Check whether the downloaded file is the intended build.
 
 ### After
 
-- tell the agent what needs doing
-- let it inspect the relevant WordPress state
-- let it run the targeted ability
-- verify the result and move on
+- See managed updates in WordPress.
+- Receive packages from one Devenia-controlled channel.
+- Let signature and hash checks reject unexpected update data.
 
 ## Who It Is For
 
-This is a good fit for:
+- WordPress sites using Devenia MCP or Abilities plugins.
+- Operators who want managed updates without depending on an external Git host.
+- Teams that prefer WordPress-native update handling and self-controlled package delivery.
 
-- teams maintaining Devenia MCP plugins across WordPress sites
-- operators who want predictable plugin update checks
-- sites that should receive managed plugin releases without manual ZIP uploads
-- maintenance workflows that need a clear release channel
+## Requirements
 
-It is especially useful when the manual version is repetitive enough that important maintenance gets delayed.
+- WordPress 6.8 or newer.
+- PHP 7.4 or newer with Sodium support.
+- WordPress filesystem updates and scheduled update checks working normally.
+- Network access from WordPress to `downloads.devenia.com`.
 
 ## Documentation
 
-Start with the main plugin page and base stack documentation:
-
-- [MCP Expose Abilities](https://devenia.com/plugins/mcp-expose-abilities/)
-- [Plugin Page](https://devenia.com/plugins/devenia-mcp-updater/)
-- [Getting Started](https://github.com/bjornfix/mcp-expose-abilities/wiki/Getting-Started)
-- [Install Order and Dependencies](https://github.com/bjornfix/mcp-expose-abilities/wiki/Install-Order-and-Dependencies)
-
-If you are using an AI agent, the simplest instruction is often just:
-
-- `Read https://github.com/bjornfix/mcp-expose-abilities and figure out the stack before making changes.`
+- [Devenia MCP Updater plugin page](https://devenia.com/plugins/devenia-mcp-updater/)
+- [MCP Expose Abilities plugin page](https://devenia.com/plugins/mcp-expose-abilities/)
 
 ## Start Here
 
-If you are new to the stack, use this order:
+Install Devenia MCP Updater before the managed Devenia plugins. Activate it, run a normal WordPress update check, and confirm that installed managed plugins are recognized. Future eligible versions then appear through WordPress' standard plugin update interface.
 
-1. Install **Devenia MCP Updater** on the WordPress site.
-2. Confirm the update manifest URL is configured.
-3. Keep managed Devenia MCP plugins installed from the release ZIPs.
-4. Let the updater handle future release checks.
+## Public Interface
 
-If you skip base-stack verification and start with add-ons immediately, troubleshooting gets harder than it needs to be.
+The plugin integrates with WordPress' native plugin-update hooks. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive only entries for explicitly managed plugin files.
 
-## Safety Model
+## Safety and Ownership
 
-- The updater does not install arbitrary plugins.
-- The updater only manages plugins explicitly listed in the manifest.
-- The updater only accepts packages hosted under the Devenia downloads path.
-- Every package is verified with SHA256 before WordPress installs it.
-- Stale duplicate folders are removed only after the canonical manifest plugin is installed, during activation, explicit refresh, or plugin upgrade flows.
-- Manifest entries must reference a passed Plugin Check report for the same SHA256.
-- If the manifest is unavailable or invalid, the updater records status and leaves installed plugins untouched.
+- The update list must have a valid Devenia signature.
+- Package URLs must use the expected Devenia downloads path.
+- Each package must match its published SHA-256 hash.
+- The plugin file, version, package identity, and package contents must agree.
+- New local Git package identities use commit, tree, and repository path; a Git remote is not trusted or required.
+- An invalid or unavailable update list causes no installed-plugin mutation.
 
-## Changelog
+## Installation
+
+1. In WordPress Admin, open **Plugins → Add New → Upload Plugin**.
+2. Upload the Devenia MCP Updater ZIP.
+3. Activate **Devenia MCP Updater**.
+4. Run a normal WordPress update check.
+
+## Recent Changes
+
+### 0.1.11
+
+- Adds locally authoritative package identities that do not require or trust a Git remote.
+- Keeps older signed package identities readable while new identities use the local model.
 
 ### 0.1.10
 
-- Finalizes active-plugin rollout receipts from WordPress' post-activation event, after the update caller has restored the prior activation state; shutdown remains the inactive-plugin fallback.
-- Reconciles preserved timing-failure receipts only when exact manifest, package, version, activation, and live-site evidence now pass.
+- Improves confirmation that an updated plugin finished in its intended activation state.
+- Safely reconciles interrupted confirmation on a later request.
 
 ### 0.1.9
 
-- Accept authenticated release identity schema 2 for Git, WordPress.org SVN, and local snapshot package sources.
-- Keep unknown or malformed source identities fail-closed before WordPress exposes an update.
-
-### 0.1.8
-
-- Verifies an Ed25519-signed manifest envelope before consuming update entries.
-- Requires release identity plus strict zero-finding Plugin Check evidence.
-- Supports immutable content-addressed package URLs.
-
-### 0.1.7
-
-- Supplies exact manifest-gated update approval through MCP Expose's neutral plugin-update policy seam, keeping private manifest knowledge out of the public plugin.
-
-### 0.1.6
-
-- Removes periodic duplicate-folder reconciliation from normal admin page loads. Reconciliation now runs only during activation, explicit refresh, or plugin upgrade flows.
-
-### 0.1.5
-
-- Marks the canonical plugin active for the next request during duplicate cleanup instead of loading a second copy in the current request.
-
-### 0.1.4
-
-- Deactivates stale duplicate plugin copies before activating the canonical manifest plugin to avoid duplicate PHP declarations.
-
-### 0.1.3
-
-- Detects stale duplicate folders for manifest-managed plugins after activation, plugin upgrades, and periodic admin checks.
-- Moves active state from a stale duplicate folder to the canonical manifest plugin before deleting the duplicate.
-
-### 0.1.2
-
-- Accepts only the canonical `https://downloads.devenia.com/<plugin>.zip` package channel at runtime.
-
-### 0.1.1
-
-- Moves the private manifest and package channel to `https://downloads.devenia.com/`.
-
-### 0.1.0
-
-- Initial private MCP update channel.
-- Adds private manifest support for known MCP/Abilities plugins.
-- Enables auto-update for manifest-managed plugins.
-- Verifies staged package SHA256 before install.
-- Requires a passed Plugin Check gate for manifest entries.
-- Records compact update status.
+- Adds authenticated package-source identities for controlled Git, WordPress.org, and complete local snapshots.
+- Rejects unknown or malformed package-source information.
 
 ## Contributing
 
-PRs welcome. Keep changes focused on the plugin's WordPress ability surface and preserve authenticated, explicit workflows.
+Keep changes focused on predictable WordPress update behavior, self-controlled distribution, and fail-closed validation. Public documentation must describe user-visible behavior without exposing private operating procedures.
 
 ## License
 
-GPL-2.0+
+GPL-2.0-or-later.
 
 ## Author
 
-[Devenia](https://devenia.com) - We've been doing SEO and web development since 1993.
+[basicus](https://profiles.wordpress.org/basicus/)
 
 ## Links
 
-- [Plugin Page](https://devenia.com/plugins/devenia-mcp-updater/)
-- [MCP Expose Abilities](https://devenia.com/plugins/mcp-expose-abilities/)
-- [GitHub Releases](https://github.com/bjornfix/devenia-mcp-updater/releases)
-
-## Star and Share
-
-If this plugin saves you time or makes WordPress maintenance easier to verify, please:
-
-- star the repo
-- share it with people running WordPress sites
-- point them to the main plugin page so they can see what the ecosystem can actually do
-
-Why do it?
-
-Because agent-friendly open WordPress tooling helps more of the boring but important work get done.
+- [Plugin page](https://devenia.com/plugins/devenia-mcp-updater/)
+- [Download the stable plugin ZIP](https://downloads.devenia.com/devenia-mcp-updater.zip)
