@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.11
+ * Version: 0.1.12
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.11' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.12' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -1125,21 +1125,15 @@ function devenia_mcp_updater_filter_update_plugins( $transient ) {
 add_filter( 'pre_set_site_transient_update_plugins', 'devenia_mcp_updater_filter_update_plugins' );
 
 /**
- * Enable unattended auto-updates for manifest-managed MCP plugins.
+ * Enable unattended auto-updates for every installed plugin.
  *
  * @param bool|null $update Whether to auto-update.
  * @param object    $item   Update item.
  * @return bool|null
  */
 function devenia_mcp_updater_auto_update_plugin( $update, $item ) {
-	$plugin = isset( $item->plugin ) ? (string) $item->plugin : '';
-	$manifest_plugins = devenia_mcp_updater_manifest_plugins();
-
-	if ( isset( $manifest_plugins[ $plugin ] ) && ! empty( $manifest_plugins[ $plugin ]['autoUpdate'] ) ) {
-		return true;
-	}
-
-	return $update;
+	unset( $update, $item );
+	return true;
 }
 add_filter( 'auto_update_plugin', 'devenia_mcp_updater_auto_update_plugin', 10, 2 );
 

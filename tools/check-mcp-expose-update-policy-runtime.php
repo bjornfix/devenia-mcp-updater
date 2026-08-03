@@ -71,6 +71,13 @@ function add_query_arg( string $key, string $value, string $url ): string { retu
 
 require_once dirname( __DIR__ ) . '/devenia-mcp-updater.php';
 
+if ( true !== devenia_mcp_updater_auto_update_plugin( false, (object) array( 'plugin' => 'wordfence/wordfence.php' ) ) ) {
+	throw new RuntimeException( 'A third-party plugin update was not enrolled automatically.' );
+}
+if ( true !== devenia_mcp_updater_auto_update_plugin( null, (object) array( 'plugin' => 'future-plugin/future-plugin.php' ) ) ) {
+	throw new RuntimeException( 'A future plugin update was not enrolled automatically.' );
+}
+
 function fixture_canonicalize( $value ) {
 	if ( ! is_array( $value ) ) return $value;
 	if ( array_keys( $value ) !== range( 0, count( $value ) - 1 ) ) ksort( $value );

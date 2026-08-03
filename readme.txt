@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.11
+Stable tag: 0.1.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -21,7 +21,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 = What It Does =
 
 * Shows eligible Devenia plugin updates in WordPress
-* Supports unattended updates for managed plugins
+* Enables unattended updates for every installed plugin
 * Verifies signed update information and exact package hashes
 * Accepts locally anchored package identities without a Git remote
 * Leaves installed plugins untouched when update information is unavailable or invalid
@@ -35,7 +35,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 
 = Safety Model =
 
-* Only explicitly listed Devenia plugins are managed
+* Only explicitly listed Devenia plugins receive packages from this private channel; all plugins remain eligible for unattended updates from their own trusted providers
 * Package URLs must use the expected Devenia downloads path
 * Every downloaded package must match its published SHA-256 hash
 * Package file, version, identity, and contents must agree
@@ -53,9 +53,9 @@ The plugin has no settings screen.
 
 == Frequently Asked Questions ==
 
-= Does this update every plugin on a site? =
+= Does this enable automatic updates for every plugin on a site? =
 
-No. It manages only the Devenia plugin files explicitly listed by the update channel.
+Yes. Every installed plugin is eligible for unattended updates. Devenia packages still come only from the signed private channel; other plugins use their own registered WordPress update providers.
 
 = Does it depend on GitHub or another Git host? =
 
@@ -66,6 +66,9 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.12 =
+* Enable unattended updates for every installed plugin, including future plugin installs.
 
 = 0.1.11 =
 * Add locally authoritative package identities that do not require or trust a Git remote.
