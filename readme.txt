@@ -25,6 +25,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 * Verifies signed update information and exact package hashes
 * Accepts locally anchored package identities without a Git remote
 * Leaves installed plugins untouched when update information is unavailable or invalid
+* Stable plugin download: https://downloads.devenia.com/devenia-mcp-updater.zip
 
 = Requirements =
 
