@@ -485,7 +485,7 @@ function devenia_mcp_updater_allow_mcp_expose_plugin_update( bool $allowed, stri
 add_filter( 'mcp_expose_plugin_update_allowed_by_policy', 'devenia_mcp_updater_allow_mcp_expose_plugin_update', 10, 2 );
 
 /**
- * Allow MCP Expose to install one exact package from the signed manifest.
+ * Allow exact signed uploads and exact retired-gate cleanup through MCP Expose.
  *
  * MCP Expose owns the neutral plugin-upload Interface. This updater Adapter
  * owns the authenticated Devenia package decision and the later hash check.
@@ -494,11 +494,15 @@ add_filter( 'mcp_expose_plugin_update_allowed_by_policy', 'devenia_mcp_updater_a
  * @param string              $ability_name Ability name currently being checked.
  * @param array<string,mixed> $input        Ability input.
  */
-function devenia_mcp_updater_allow_mcp_expose_plugin_upload( bool $allowed, string $ability_name, array $input ): bool {
+function devenia_mcp_updater_allow_mcp_expose_plugin_code_write( bool $allowed, string $ability_name, array $input ): bool {
 	$GLOBALS['devenia_mcp_updater_pending_upload_entry'] = null;
 
 	if ( $allowed ) {
 		return true;
+	}
+
+	if ( 'plugins/delete' === $ability_name ) {
+		return 'devenia-mcp-downloads-upload-gate/devenia-mcp-downloads-upload-gate.php' === (string) ( $input['plugin'] ?? '' );
 	}
 
 	if ( 'plugins/upload' !== $ability_name || ! isset( $input['url'] ) || ! is_string( $input['url'] ) ) {
@@ -520,7 +524,7 @@ function devenia_mcp_updater_allow_mcp_expose_plugin_upload( bool $allowed, stri
 
 	return false;
 }
-add_filter( 'mcp_expose_enable_plugin_code_write_ability', 'devenia_mcp_updater_allow_mcp_expose_plugin_upload', 10, 3 );
+add_filter( 'mcp_expose_enable_plugin_code_write_ability', 'devenia_mcp_updater_allow_mcp_expose_plugin_code_write', 10, 3 );
 
 /**
  * Load WordPress plugin-management helpers when they are not already loaded.
@@ -539,7 +543,7 @@ function devenia_mcp_updater_require_plugin_helpers(): void {
 }
 
 /**
- * Remove the superseded standalone upload-gate plugin.
+ * Deactivate the superseded upload gate before control-plane deletion.
  *
  * The updater now owns the same MCP policy seam with signed manifest and hash
  * authority. Removing the old callbacks also closes their weaker root-URL
@@ -558,7 +562,8 @@ function devenia_mcp_updater_retire_downloads_upload_gate(): array {
 	if ( ! isset( $installed[ $plugin_file ] ) ) {
 		return array(
 			'checked' => true,
-			'removed' => false,
+			'installed' => false,
+			'prepared' => true,
 			'errors'  => array(),
 		);
 	}
@@ -571,23 +576,16 @@ function devenia_mcp_updater_retire_downloads_upload_gate(): array {
 	if ( is_plugin_active( $plugin_file ) || ( is_multisite() && is_plugin_active_for_network( $plugin_file ) ) ) {
 		return array(
 			'checked' => true,
-			'removed' => false,
+			'installed' => true,
+			'prepared' => false,
 			'errors'  => array( 'The superseded upload gate remained active after deactivation.' ),
-		);
-	}
-
-	$deleted = delete_plugins( array( $plugin_file ) );
-	if ( is_wp_error( $deleted ) || true !== $deleted ) {
-		return array(
-			'checked' => true,
-			'removed' => false,
-			'errors'  => array( is_wp_error( $deleted ) ? $deleted->get_error_message() : 'The superseded upload gate could not be deleted.' ),
 		);
 	}
 
 	return array(
 		'checked' => true,
-		'removed' => true,
+		'installed' => true,
+		'prepared' => true,
 		'errors'  => array(),
 	);
 }
@@ -601,19 +599,23 @@ function devenia_mcp_updater_maybe_retire_downloads_upload_gate(): void {
 
 	$result = devenia_mcp_updater_retire_downloads_upload_gate();
 	$errors = is_array( $result['errors'] ?? null ) ? $result['errors'] : array( 'Upload-gate retirement returned an invalid result.' );
-	$status = array() === $errors ? 'complete' : 'blocked';
+	$status = array() !== $errors ? 'blocked' : ( empty( $result['installed'] ) ? 'complete' : 'awaiting_control_plane_cleanup' );
 	$state  = array(
 		'status'       => $status,
-		'removed'      => ! empty( $result['removed'] ),
+		'installed'    => ! empty( $result['installed'] ),
+		'prepared'     => ! empty( $result['prepared'] ),
 		'errors'       => $errors,
-		'completed_at' => gmdate( 'c' ),
+		'checked_at'   => gmdate( 'c' ),
 		'version'      => DEVENIA_MCP_UPDATER_VERSION,
 	);
+	if ( in_array( $status, array( 'complete', 'blocked' ), true ) ) {
+		$state['completed_at'] = $state['checked_at'];
+	}
 	update_option( DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION, $state, false );
 
 	if ( 'blocked' === $status ) {
 		devenia_mcp_updater_record_status( 'upload_gate_retirement_blocked', implode( ' ', $errors ), array( 'retirement' => $state ) );
-	} elseif ( ! empty( $result['removed'] ) ) {
+	} elseif ( 'complete' === $status ) {
 		devenia_mcp_updater_record_status( 'upload_gate_retired', 'The superseded standalone upload gate was removed.', array( 'retirement' => $state ) );
 	}
 }

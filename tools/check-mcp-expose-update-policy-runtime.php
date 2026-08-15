@@ -31,7 +31,6 @@ $GLOBALS['fixture_fail_option_key'] = '';
 $GLOBALS['fixture_deleted_plugins'] = array();
 $GLOBALS['fixture_deactivated_plugins'] = array();
 $GLOBALS['fixture_keep_plugin_active'] = false;
-$GLOBALS['fixture_delete_plugins_result'] = true;
 
 function add_action( ...$args ): void { unset( $args ); }
 function add_filter( ...$args ): void { unset( $args ); }
@@ -83,9 +82,6 @@ function deactivate_plugins( $plugins, ...$args ): void {
 	}
 }
 function delete_plugins( array $plugins ) {
-	if ( true !== $GLOBALS['fixture_delete_plugins_result'] ) {
-		return $GLOBALS['fixture_delete_plugins_result'];
-	}
 	foreach ( $plugins as $plugin ) {
 		$GLOBALS['fixture_deleted_plugins'][] = $plugin;
 		unset( $GLOBALS['fixture_installed'][ $plugin ], $GLOBALS['fixture_active'][ $plugin ] );
@@ -239,24 +235,31 @@ $GLOBALS['fixture_updates'] = (object) array(
 	'response' => array( $plugin_file => (object) array( 'package' => $package, 'new_version' => $version ) ),
 );
 
-if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload', array( 'url' => $package ) ) ) {
+if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload', array( 'url' => $package ) ) ) {
 	throw new RuntimeException( 'An exact signed-manifest package upload was not approved.' );
 }
-if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload', array( 'url' => 'https://downloads.devenia.com/mcp-expose-abilities.zip' ) ) ) {
+if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload', array( 'url' => 'https://downloads.devenia.com/mcp-expose-abilities.zip' ) ) ) {
 	throw new RuntimeException( 'A stable alias without exact manifest identity was approved for upload.' );
 }
-if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload-base64', array( 'url' => $package ) ) ) {
+if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload-base64', array( 'url' => $package ) ) ) {
 	throw new RuntimeException( 'A different plugin code-write ability was approved by the upload policy.' );
 }
-if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_upload( true, 'plugins/upload-base64', array() ) ) {
+if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( true, 'plugins/upload-base64', array() ) ) {
 	throw new RuntimeException( 'An earlier affirmative plugin code-write policy decision was narrowed.' );
+}
+$retired_gate_file = 'devenia-mcp-downloads-upload-gate/devenia-mcp-downloads-upload-gate.php';
+if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/delete', array( 'plugin' => $retired_gate_file ) ) ) {
+	throw new RuntimeException( 'Exact control-plane cleanup of the retired upload gate was not approved.' );
+}
+if ( false !== devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/delete', array( 'plugin' => 'other/other.php' ) ) ) {
+	throw new RuntimeException( 'Deletion of an unrelated plugin was approved by the retirement policy.' );
 }
 
 $valid_upload = tempnam( sys_get_temp_dir(), 'devenia-upload-' );
 if ( false === $valid_upload || false === file_put_contents( $valid_upload, $upload_bytes ) ) {
 	throw new RuntimeException( 'Could not create the valid upload fixture.' );
 }
-devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload', array( 'url' => $package ) );
+devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload', array( 'url' => $package ) );
 if ( $valid_upload !== devenia_mcp_updater_verify_download( false, $valid_upload ) ) {
 	throw new RuntimeException( 'The exact manifest-approved local upload bytes were not accepted.' );
 }
@@ -266,7 +269,7 @@ $invalid_upload = tempnam( sys_get_temp_dir(), 'devenia-upload-' );
 if ( false === $invalid_upload || false === file_put_contents( $invalid_upload, 'changed upload fixture' ) ) {
 	throw new RuntimeException( 'Could not create the changed upload fixture.' );
 }
-devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload', array( 'url' => $package ) );
+devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload', array( 'url' => $package ) );
 $invalid_upload_result = devenia_mcp_updater_verify_download( false, $invalid_upload );
 if ( ! is_wp_error( $invalid_upload_result ) || file_exists( $invalid_upload ) ) {
 	throw new RuntimeException( 'Changed local upload bytes were not rejected and removed before installation.' );
@@ -280,7 +283,7 @@ if (
 ) {
 	throw new RuntimeException( 'Could not create one-time upload authority fixtures.' );
 }
-devenia_mcp_updater_allow_mcp_expose_plugin_upload( false, 'plugins/upload', array( 'url' => $package ) );
+devenia_mcp_updater_allow_mcp_expose_plugin_code_write( false, 'plugins/upload', array( 'url' => $package ) );
 if ( 'preempted' !== devenia_mcp_updater_verify_download( 'preempted', $preempted_upload ) ) {
 	throw new RuntimeException( 'An existing upgrader pre-download decision was not preserved.' );
 }
@@ -290,7 +293,6 @@ if ( false !== devenia_mcp_updater_verify_download( false, $unrelated_upload ) |
 wp_delete_file( $preempted_upload );
 wp_delete_file( $unrelated_upload );
 
-$retired_gate_file = 'devenia-mcp-downloads-upload-gate/devenia-mcp-downloads-upload-gate.php';
 $GLOBALS['fixture_installed'][ $retired_gate_file ] = array( 'Version' => '0.1.1' );
 $GLOBALS['fixture_active'][ $retired_gate_file ] = true;
 $GLOBALS['fixture_keep_plugin_active'] = true;
@@ -299,28 +301,28 @@ if ( empty( $failed_deactivation['errors'] ) ) {
 	throw new RuntimeException( 'Upload-gate retirement did not report a deactivation failure.' );
 }
 $GLOBALS['fixture_keep_plugin_active'] = false;
-$GLOBALS['fixture_delete_plugins_result'] = new WP_Error( 'delete_failed', 'Delete failed.' );
-$failed_deletion = devenia_mcp_updater_retire_downloads_upload_gate();
-if ( array( 'Delete failed.' ) !== ( $failed_deletion['errors'] ?? array() ) ) {
-	throw new RuntimeException( 'Upload-gate retirement did not report a deletion failure.' );
-}
-$GLOBALS['fixture_delete_plugins_result'] = true;
 $GLOBALS['fixture_active'][ $retired_gate_file ] = true;
 devenia_mcp_updater_maybe_retire_downloads_upload_gate();
 $retirement_state = get_option( DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION, array() );
 if (
-	'complete' !== ( $retirement_state['status'] ?? '' )
-	|| isset( $GLOBALS['fixture_installed'][ $retired_gate_file ] )
+	'awaiting_control_plane_cleanup' !== ( $retirement_state['status'] ?? '' )
+	|| ! isset( $GLOBALS['fixture_installed'][ $retired_gate_file ] )
 	|| ! empty( $GLOBALS['fixture_active'][ $retired_gate_file ] )
 	|| ! in_array( $retired_gate_file, $GLOBALS['fixture_deactivated_plugins'], true )
-	|| ! in_array( $retired_gate_file, $GLOBALS['fixture_deleted_plugins'], true )
+	|| in_array( $retired_gate_file, $GLOBALS['fixture_deleted_plugins'], true )
 ) {
-	throw new RuntimeException( 'The superseded upload-gate plugin was not retired after updater ownership was active.' );
+	throw new RuntimeException( 'The superseded upload gate was not prepared for control-plane cleanup.' );
 }
-$deleted_after_retirement = count( $GLOBALS['fixture_deleted_plugins'] );
+$deactivated_after_preparation = count( $GLOBALS['fixture_deactivated_plugins'] );
 devenia_mcp_updater_maybe_retire_downloads_upload_gate();
-if ( $deleted_after_retirement !== count( $GLOBALS['fixture_deleted_plugins'] ) ) {
-	throw new RuntimeException( 'The terminal upload-gate retirement was not idempotent.' );
+if ( $deactivated_after_preparation !== count( $GLOBALS['fixture_deactivated_plugins'] ) ) {
+	throw new RuntimeException( 'The upload-gate retirement preparation was not idempotent.' );
+}
+unset( $GLOBALS['fixture_installed'][ $retired_gate_file ] );
+devenia_mcp_updater_maybe_retire_downloads_upload_gate();
+$retirement_state = get_option( DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION, array() );
+if ( 'complete' !== ( $retirement_state['status'] ?? '' ) ) {
+	throw new RuntimeException( 'External upload-gate cleanup did not become terminal local retirement evidence.' );
 }
 
 if ( true !== devenia_mcp_updater_allow_mcp_expose_plugin_update( false, $plugin_file ) ) {
