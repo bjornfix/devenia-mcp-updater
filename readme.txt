@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.12
+Stable tag: 0.1.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -23,6 +23,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 * Shows eligible Devenia plugin updates in WordPress
 * Enables unattended updates for every installed plugin
 * Verifies signed update information and exact package hashes
+* Allows MCP URL installation only for an exact package in the signed update information
 * Accepts locally anchored package identities without a Git remote
 * Leaves installed plugins untouched when update information is unavailable or invalid
 * Stable plugin download: https://downloads.devenia.com/devenia-mcp-updater.zip
@@ -39,6 +40,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 * Only explicitly listed Devenia plugins receive packages from this private channel; all plugins remain eligible for unattended updates from their own trusted providers
 * Package URLs must use the expected Devenia downloads path
 * Every downloaded package must match its published SHA-256 hash
+* MCP URL installation must name the exact package in the valid signed update information
 * Package file, version, identity, and contents must agree
 * A Git remote is not trusted or required for new package identities
 * Invalid or unavailable update information does not modify installed plugins
@@ -67,6 +69,10 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.13 =
+* Consolidate signed MCP package installation and managed updates in one plugin.
+* Remove the superseded standalone downloads upload gate.
 
 = 0.1.12 =
 * Enable unattended updates for every installed plugin, including future plugin installs.

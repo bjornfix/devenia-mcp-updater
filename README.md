@@ -2,14 +2,14 @@
 
 Keep Devenia-managed WordPress plugins current through a Devenia-controlled update channel.
 
-[![Release 0.1.12](https://img.shields.io/badge/release-0.1.12-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
+[![Release 0.1.13](https://img.shields.io/badge/release-0.1.13-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8%2B-blue.svg)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.0
 
-**Stable tag:** 0.1.12
+**Stable tag:** 0.1.13
 
 **License:** GPLv2 or later
 
@@ -22,6 +22,7 @@ Devenia MCP Updater connects WordPress' native update system to packages publish
 - Shows eligible Devenia plugin updates in the normal WordPress update flow.
 - Enables unattended updates for every installed plugin, including future installs.
 - Verifies the signed update list and the exact package hash.
+- Allows MCP URL installation only for an exact package in the signed update list.
 - Accepts locally anchored package identities without relying on an external Git host.
 - Leaves installed plugins untouched when update information is unavailable or invalid.
 
@@ -30,8 +31,9 @@ Devenia MCP Updater connects WordPress' native update system to packages publish
 1. Install and activate the updater once.
 2. WordPress checks the Devenia update channel during its normal update cycle.
 3. Listed Devenia plugins receive validated private-channel offers; other plugins keep their own update providers.
-4. WordPress downloads the package from Devenia infrastructure and verifies its hash.
-5. The normal WordPress plugin update process installs the approved version.
+4. An MCP URL installation is admitted only when it names the exact listed package.
+5. WordPress downloads the package from Devenia infrastructure and verifies its hash.
+6. The normal WordPress plugin process installs the approved package.
 
 There is no separate settings screen and no external repository account to configure.
 
@@ -77,13 +79,14 @@ Install Devenia MCP Updater before the managed Devenia plugins. Activate it, run
 
 ## Public Interface
 
-The plugin integrates with WordPress' native plugin-update hooks. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive private-channel entries only for explicitly managed plugin files, while WordPress automatically installs eligible updates for every plugin.
+The plugin integrates with WordPress' native plugin-update hooks and the structured MCP plugin-upload policy seam. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive private-channel entries only for explicitly managed plugin files, while WordPress automatically installs eligible updates for every plugin.
 
 ## Safety and Ownership
 
 - The update list must have a valid Devenia signature.
 - Package URLs must use the expected Devenia downloads path.
 - Each package must match its published SHA-256 hash.
+- MCP URL installation must name the exact package in the valid signed update list.
 - The plugin file, version, package identity, and package contents must agree.
 - New local Git package identities use commit, tree, and repository path; a Git remote is not trusted or required.
 - An invalid or unavailable update list causes no installed-plugin mutation.
@@ -96,6 +99,11 @@ The plugin integrates with WordPress' native plugin-update hooks. It has no publ
 4. Run a normal WordPress update check.
 
 ## Recent Changes
+
+### 0.1.13
+
+- Consolidates signed MCP package installation and managed updates in one plugin.
+- Removes the superseded standalone downloads upload gate.
 
 ### 0.1.12
 

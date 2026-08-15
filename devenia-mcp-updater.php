@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.12
+ * Version: 0.1.13
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.12' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.13' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -36,10 +36,12 @@ define( 'DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPT_PREFIX', 'devenia_mcp_updater_rollo
 define( 'DEVENIA_MCP_UPDATER_LEGACY_RECONCILE_TRANSIENT', 'devenia_mcp_updater_legacy_reconcile_v1' );
 define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_OPTION', 'devenia_mcp_updater_receipt_migration_v1' );
 define( 'DEVENIA_MCP_UPDATER_RECEIPT_MIGRATION_LOCK_OPTION', 'devenia_mcp_updater_receipt_migration_lock_v1' );
+define( 'DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION', 'devenia_mcp_updater_upload_gate_retirement_v1' );
 
 /** @var string[] Managed plugin files awaiting request-terminal rollout evidence. */
 $GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
 $GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'] = array();
+$GLOBALS['devenia_mcp_updater_pending_upload_entry'] = null;
 
 /** One request-owned key prevents predecessor/successor pending replacement. */
 function devenia_mcp_updater_rollout_pending_key( string $rollout_id ): string {
@@ -483,6 +485,44 @@ function devenia_mcp_updater_allow_mcp_expose_plugin_update( bool $allowed, stri
 add_filter( 'mcp_expose_plugin_update_allowed_by_policy', 'devenia_mcp_updater_allow_mcp_expose_plugin_update', 10, 2 );
 
 /**
+ * Allow MCP Expose to install one exact package from the signed manifest.
+ *
+ * MCP Expose owns the neutral plugin-upload Interface. This updater Adapter
+ * owns the authenticated Devenia package decision and the later hash check.
+ *
+ * @param bool                $allowed      Existing policy decision.
+ * @param string              $ability_name Ability name currently being checked.
+ * @param array<string,mixed> $input        Ability input.
+ */
+function devenia_mcp_updater_allow_mcp_expose_plugin_upload( bool $allowed, string $ability_name, array $input ): bool {
+	$GLOBALS['devenia_mcp_updater_pending_upload_entry'] = null;
+
+	if ( $allowed ) {
+		return true;
+	}
+
+	if ( 'plugins/upload' !== $ability_name || ! isset( $input['url'] ) || ! is_string( $input['url'] ) ) {
+		return false;
+	}
+
+	$package = $input['url'];
+	foreach ( devenia_mcp_updater_manifest_plugins( true ) as $entry ) {
+		if ( empty( $entry['autoUpdate'] ) ) {
+			continue;
+		}
+
+		$manifest_package = (string) ( $entry['package'] ?? '' );
+		if ( '' !== $manifest_package && hash_equals( $manifest_package, $package ) ) {
+			$GLOBALS['devenia_mcp_updater_pending_upload_entry'] = $entry;
+			return true;
+		}
+	}
+
+	return false;
+}
+add_filter( 'mcp_expose_enable_plugin_code_write_ability', 'devenia_mcp_updater_allow_mcp_expose_plugin_upload', 10, 3 );
+
+/**
  * Load WordPress plugin-management helpers when they are not already loaded.
  *
  * @return void
@@ -497,6 +537,87 @@ function devenia_mcp_updater_require_plugin_helpers(): void {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 	}
 }
+
+/**
+ * Remove the superseded standalone upload-gate plugin.
+ *
+ * The updater now owns the same MCP policy seam with signed manifest and hash
+ * authority. Removing the old callbacks also closes their weaker root-URL
+ * rule for the current request before the plugin files are deleted.
+ *
+ * @return array<string,mixed>
+ */
+function devenia_mcp_updater_retire_downloads_upload_gate(): array {
+	$plugin_file = 'devenia-mcp-downloads-upload-gate/devenia-mcp-downloads-upload-gate.php';
+
+	remove_filter( 'mcp_expose_enable_plugin_code_writes', 'devenia_mcp_downloads_upload_gate_filter_code_writes', 10 );
+	remove_filter( 'mcp_expose_enable_plugin_code_write_ability', 'devenia_mcp_downloads_upload_gate_filter_code_write_ability', 10 );
+
+	devenia_mcp_updater_require_plugin_helpers();
+	$installed = get_plugins();
+	if ( ! isset( $installed[ $plugin_file ] ) ) {
+		return array(
+			'checked' => true,
+			'removed' => false,
+			'errors'  => array(),
+		);
+	}
+
+	$network_active = is_multisite() && is_plugin_active_for_network( $plugin_file );
+	if ( is_plugin_active( $plugin_file ) || $network_active ) {
+		deactivate_plugins( $plugin_file, true, $network_active );
+	}
+
+	if ( is_plugin_active( $plugin_file ) || ( is_multisite() && is_plugin_active_for_network( $plugin_file ) ) ) {
+		return array(
+			'checked' => true,
+			'removed' => false,
+			'errors'  => array( 'The superseded upload gate remained active after deactivation.' ),
+		);
+	}
+
+	$deleted = delete_plugins( array( $plugin_file ) );
+	if ( is_wp_error( $deleted ) || true !== $deleted ) {
+		return array(
+			'checked' => true,
+			'removed' => false,
+			'errors'  => array( is_wp_error( $deleted ) ? $deleted->get_error_message() : 'The superseded upload gate could not be deleted.' ),
+		);
+	}
+
+	return array(
+		'checked' => true,
+		'removed' => true,
+		'errors'  => array(),
+	);
+}
+
+/** Retire the old upload-gate plugin once, with a terminal local result. */
+function devenia_mcp_updater_maybe_retire_downloads_upload_gate(): void {
+	$state = get_option( DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION, array() );
+	if ( is_array( $state ) && in_array( $state['status'] ?? '', array( 'complete', 'blocked' ), true ) ) {
+		return;
+	}
+
+	$result = devenia_mcp_updater_retire_downloads_upload_gate();
+	$errors = is_array( $result['errors'] ?? null ) ? $result['errors'] : array( 'Upload-gate retirement returned an invalid result.' );
+	$status = array() === $errors ? 'complete' : 'blocked';
+	$state  = array(
+		'status'       => $status,
+		'removed'      => ! empty( $result['removed'] ),
+		'errors'       => $errors,
+		'completed_at' => gmdate( 'c' ),
+		'version'      => DEVENIA_MCP_UPDATER_VERSION,
+	);
+	update_option( DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION, $state, false );
+
+	if ( 'blocked' === $status ) {
+		devenia_mcp_updater_record_status( 'upload_gate_retirement_blocked', implode( ' ', $errors ), array( 'retirement' => $state ) );
+	} elseif ( ! empty( $result['removed'] ) ) {
+		devenia_mcp_updater_record_status( 'upload_gate_retired', 'The superseded standalone upload gate was removed.', array( 'retirement' => $state ) );
+	}
+}
+add_action( 'plugins_loaded', 'devenia_mcp_updater_maybe_retire_downloads_upload_gate', PHP_INT_MAX );
 
 /**
  * Find stale duplicate folders for manifest-managed plugins.
@@ -1138,6 +1259,25 @@ function devenia_mcp_updater_auto_update_plugin( $update, $item ) {
 add_filter( 'auto_update_plugin', 'devenia_mcp_updater_auto_update_plugin', 10, 2 );
 
 /**
+ * Verify one downloaded package file against its authenticated manifest entry.
+ *
+ * @param array<string,mixed> $entry Manifest entry.
+ * @param string              $file  Local package path.
+ * @return WP_Error|string
+ */
+function devenia_mcp_updater_verify_package_file( array $entry, string $file ) {
+	$actual_hash = is_file( $file ) ? hash_file( 'sha256', $file ) : false;
+	if ( ! is_string( $actual_hash ) || ! hash_equals( (string) $entry['sha256'], $actual_hash ) ) {
+		wp_delete_file( $file );
+		$error = new WP_Error( 'devenia_mcp_hash_mismatch', 'Private MCP package hash mismatch.' );
+		devenia_mcp_updater_record_status( 'hash_mismatch', 'Package hash mismatch.', array( 'plugin' => $entry['file'] ) );
+		return $error;
+	}
+
+	return $file;
+}
+
+/**
  * Verify private package hashes before WordPress installs them.
  *
  * @param false|WP_Error|string $reply   Existing response.
@@ -1145,8 +1285,14 @@ add_filter( 'auto_update_plugin', 'devenia_mcp_updater_auto_update_plugin', 10, 
  * @return false|WP_Error|string
  */
 function devenia_mcp_updater_verify_download( $reply, string $package ) {
+	$pending_upload = $GLOBALS['devenia_mcp_updater_pending_upload_entry'] ?? null;
+	$GLOBALS['devenia_mcp_updater_pending_upload_entry'] = null;
 	if ( false !== $reply ) {
 		return $reply;
+	}
+
+	if ( is_array( $pending_upload ) && is_file( $package ) ) {
+		return devenia_mcp_updater_verify_package_file( $pending_upload, $package );
 	}
 
 	$entry = null;
@@ -1171,15 +1317,7 @@ function devenia_mcp_updater_verify_download( $reply, string $package ) {
 		return $tmp_file;
 	}
 
-	$actual_hash = hash_file( 'sha256', $tmp_file );
-	if ( ! hash_equals( $entry['sha256'], $actual_hash ) ) {
-		wp_delete_file( $tmp_file );
-		$error = new WP_Error( 'devenia_mcp_hash_mismatch', 'Private MCP package hash mismatch.' );
-		devenia_mcp_updater_record_status( 'hash_mismatch', 'Package hash mismatch.', array( 'plugin' => $entry['file'] ) );
-		return $error;
-	}
-
-	return $tmp_file;
+	return devenia_mcp_updater_verify_package_file( $entry, $tmp_file );
 }
 add_filter( 'upgrader_pre_download', 'devenia_mcp_updater_verify_download', 10, 2 );
 
