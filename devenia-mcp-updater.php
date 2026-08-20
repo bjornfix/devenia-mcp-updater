@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.13
+ * Version: 0.1.14
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.13' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.14' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -235,7 +235,7 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 	return $entry;
 }
 
-/** Accept only the two centrally approved, exact Plugin Check exceptions. */
+/** Accept only the centrally approved, exact Plugin Check exceptions. */
 function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exception ): bool {
 	$approved = array(
 		'devenia-mcp-updater' => array(
@@ -249,6 +249,12 @@ function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exceptio
 			'reason' => 'This authenticated MCP plugin intentionally exposes policy-gated plugin installation operations outside WordPress.org distribution.',
 			'allowedCodes' => array( 'PluginCheck.CodeAnalysis.WriteFile.PluginDirectoryWrite' ),
 			'requiredDetected' => array( 'unzip_file', 'copy_dir', 'WP_PLUGIN_DIR' ),
+		),
+		'mcp-adapter' => array(
+			'status' => 'upstream-release-metadata',
+			'reason' => 'The upstream MCP Adapter 0.6.1 release has exactly two non-code Plugin Check metadata findings; its executable checks produced no errors.',
+			'allowedCodes' => array( 'outdated_tested_upto_header', 'readme_reserved_contributors' ),
+			'requiredDetected' => array( 'Tested up to: 7.0', 'wordpressdotorg' ),
 		),
 	);
 	if ( ! isset( $approved[ $slug ] ) || ! is_array( $exception ) ) {

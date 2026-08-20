@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.13
+Stable tag: 0.1.14
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -69,6 +69,10 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.14 =
+
+Adds signed updates for the upstream MCP Adapter release channel.
 
 = 0.1.13 =
 * Consolidate signed MCP package installation and managed updates in one plugin.
