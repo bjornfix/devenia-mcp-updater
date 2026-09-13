@@ -17,7 +17,7 @@ Keep Devenia-managed WordPress plugins current through a Devenia-controlled upda
 
 ## What It Does
 
-Devenia MCP Updater connects WordPress' native update system to packages published on Devenia-controlled infrastructure and enables unattended updates for every installed plugin. Only explicitly listed Devenia plugins receive packages from the private channel; other plugins continue to use their own registered WordPress update providers.
+Devenia MCP Updater connects WordPress' native update system to packages published on Devenia-controlled infrastructure and enables unattended updates for every installed plugin. Only plugins explicitly listed in the signed Devenia channel receive packages from it; the list can include a designated upstream plugin. Other plugins continue to use their own registered WordPress update providers.
 
 - Shows eligible Devenia plugin updates in the normal WordPress update flow.
 - Enables unattended updates for every installed plugin, including future installs.
@@ -30,12 +30,12 @@ Devenia MCP Updater connects WordPress' native update system to packages publish
 
 1. Install and activate the updater once.
 2. WordPress checks the Devenia update channel during its normal update cycle.
-3. Listed Devenia plugins receive validated private-channel offers; other plugins keep their own update providers.
+3. Listed plugins receive validated Devenia-channel offers; other plugins keep their own update providers.
 4. An MCP URL installation is admitted only when it names the exact listed package.
 5. WordPress downloads the package from Devenia infrastructure and verifies its hash.
 6. The normal WordPress plugin process installs the approved package.
 
-There is no separate settings screen and no external repository account to configure.
+There is no separate settings screen and no external repository account to configure. Enabling automatic updates is not proof that an update has completed: check the installed version and the functions your site relies on after an update. Keep a restorable backup before enabling unattended changes.
 
 ## Why This Feels Different
 
@@ -79,7 +79,7 @@ Install Devenia MCP Updater before the managed Devenia plugins. Activate it, run
 
 ## Public Interface
 
-The plugin integrates with WordPress' native plugin-update hooks and the structured MCP plugin-upload policy seam. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive private-channel entries only for explicitly managed plugin files, while WordPress automatically installs eligible updates for every plugin.
+The plugin integrates with WordPress' native plugin-update hooks and the structured MCP plugin-upload policy seam. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive Devenia-channel entries only for explicitly managed plugin files. The plugin returns `true` through the native `auto_update_plugin` filter for every plugin, including future installs, rather than using the saved per-plugin opt-in list. WordPress scheduling, filesystem access, site-wide restrictions, and other update hooks still affect whether an update runs or completes. This plugin does not change theme or WordPress core update policy.
 
 ## Safety and Ownership
 

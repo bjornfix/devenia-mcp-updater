@@ -14,7 +14,7 @@ Keep Devenia-managed WordPress plugins current through a Devenia-controlled upda
 
 Devenia MCP Updater connects WordPress' native plugin update system to packages published on Devenia-controlled infrastructure.
 
-It manages only explicitly listed Devenia plugins. Update information must have a valid Devenia signature, package URLs must use the expected Devenia downloads path, and downloaded packages must match their published SHA-256 hash.
+It supplies packages only for plugins explicitly listed in the signed Devenia channel, which can include a designated upstream plugin. Update information must have a valid Devenia signature, package URLs must use the expected Devenia downloads path, and downloaded packages must match their published SHA-256 hash.
 
 The updater does not require an external Git-hosting account. New Git-backed package identities are anchored to the local commit, tree, and repository path instead of a remote service.
 
@@ -37,7 +37,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 
 = Safety Model =
 
-* Only explicitly listed Devenia plugins receive packages from this private channel; all plugins remain eligible for unattended updates from their own trusted providers
+* Only explicitly listed plugins receive packages from the Devenia channel; plugins outside that list keep their own registered update providers
 * Package URLs must use the expected Devenia downloads path
 * Every downloaded package must match its published SHA-256 hash
 * MCP URL installation must name the exact package in the valid signed update information
@@ -52,13 +52,13 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 3. Activate Devenia MCP Updater
 4. Run a normal WordPress update check
 
-The plugin has no settings screen.
+The plugin has no settings screen. Keep a restorable backup, then check the installed version and important site functions after an update; automatic-update eligibility does not prove completion.
 
 == Frequently Asked Questions ==
 
 = Does this enable automatic updates for every plugin on a site? =
 
-Yes. Every installed plugin is eligible for unattended updates. Devenia packages still come only from the signed private channel; other plugins use their own registered WordPress update providers.
+Yes, including plugins installed later. The plugin enables the native automatic-update filter for every plugin instead of relying on the saved per-plugin opt-in list. Plugins in the signed Devenia channel receive its packages; other plugins use their own registered update providers. Scheduling, filesystem access, site-wide restrictions, and other update hooks still affect whether an update completes. The plugin does not change theme or WordPress core update policy.
 
 = Does it depend on GitHub or another Git host? =
 
