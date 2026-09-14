@@ -6,6 +6,7 @@
 declare( strict_types=1 );
 
 define( 'ABSPATH', __DIR__ . '/' );
+define( 'WP_PLUGIN_DIR', __DIR__ );
 define( 'MINUTE_IN_SECONDS', 60 );
 define( 'HOUR_IN_SECONDS', 3600 );
 
@@ -31,6 +32,10 @@ $GLOBALS['fixture_fail_option_key'] = '';
 $GLOBALS['fixture_deleted_plugins'] = array();
 $GLOBALS['fixture_deactivated_plugins'] = array();
 $GLOBALS['fixture_keep_plugin_active'] = false;
+$GLOBALS['fixture_rollback_package'] = null;
+$GLOBALS['fixture_rollback_plugin'] = '';
+$GLOBALS['fixture_rollback_version'] = '';
+$GLOBALS['fixture_rollback_calls'] = array();
 
 function add_action( ...$args ): void { unset( $args ); }
 function add_filter( ...$args ): void { unset( $args ); }
@@ -65,6 +70,31 @@ function delete_option( $key ): bool { if ( ! array_key_exists( $key, $GLOBALS['
 function get_option( $key, $default = false ) { return $GLOBALS['fixture_options'][ $key ] ?? $default; }
 function wp_generate_uuid4(): string { $GLOBALS['fixture_uuid']++; return '00000000-0000-4000-8000-' . str_pad( (string) $GLOBALS['fixture_uuid'], 12, '0', STR_PAD_LEFT ); }
 function wp_clean_plugins_cache( ...$args ): void { unset( $args ); }
+function download_url( string $url, int $timeout = 300 ) { unset( $url, $timeout ); return $GLOBALS['fixture_rollback_package'] ?? new WP_Error( 'missing_fixture_package', 'Missing rollback fixture package.' ); }
+class Automatic_Upgrader_Skin {}
+class Plugin_Upgrader {
+	private bool $initialized = false;
+	public function __construct( $skin ) { unset( $skin ); }
+	public function install( string $package, array $options = array() ) {
+		$this->initialized = true;
+		return $this->run( array_merge( $options, array( 'package' => $package ) ) );
+	}
+	public function run( array $options ) {
+		if ( ! $this->initialized ) {
+			throw new RuntimeException( 'Native plugin installation requires initialized upgrader state and package validation.' );
+		}
+		$GLOBALS['fixture_rollback_calls'][] = $options;
+		if ( array_key_exists( 'fixture_rollback_result', $GLOBALS ) ) {
+			return $GLOBALS['fixture_rollback_result'];
+		}
+		$plugin = (string) ( $GLOBALS['fixture_rollback_plugin'] ?? '' );
+		if ( '' === $plugin ) {
+			return new WP_Error( 'missing_fixture_plugin', 'Missing rollback fixture plugin.' );
+		}
+		$GLOBALS['fixture_installed'][ $plugin ] = array( 'Version' => (string) ( $GLOBALS['fixture_rollback_version'] ?? '' ) );
+		return true;
+	}
+}
 function wp_update_plugins(): void {}
 function get_plugins(): array { return $GLOBALS['fixture_installed']; }
 function is_plugin_active( string $plugin ): bool { return ! empty( $GLOBALS['fixture_active'][ $plugin ] ); }
@@ -154,6 +184,22 @@ $plugins = array(
 			),
 		),
 );
+$rollback_bytes = 'signed rollback fixture';
+$rollback_sha   = hash( 'sha256', $rollback_bytes );
+$rollback_package = 'https://downloads.devenia.com/artifacts/mcp-expose-abilities/' . $rollback_sha . '/mcp-expose-abilities.zip';
+$plugins[0]['rollback'] = array( 'available' => true, 'version' => '3.0.77', 'package' => $rollback_package, 'sha256' => $rollback_sha );
+$rollback_fixture_file = tempnam( sys_get_temp_dir(), 'devenia-rollback-' );
+if ( false === $rollback_fixture_file || false === file_put_contents( $rollback_fixture_file, $rollback_bytes ) ) {
+	throw new RuntimeException( 'Could not create the signed rollback fixture.' );
+}
+$GLOBALS['fixture_rollback_package'] = $rollback_fixture_file;
+$GLOBALS['fixture_rollback_plugin'] = $plugin_file;
+$GLOBALS['fixture_rollback_version'] = '3.0.77';
+register_shutdown_function( static function () use ( $rollback_fixture_file ): void {
+	if ( is_file( $rollback_fixture_file ) ) {
+		unlink( $rollback_fixture_file );
+	}
+} );
 $historical_identity = json_decode( '{"schemaVersion":2,"slug":"devenia-mcp-updater","version":"0.1.10","sha256":"fb1534575ee5af47d77f971dbdfcb81371a1d2bce63f5905ea9ea7bf1ce225e9","mainFile":"devenia-mcp-updater/devenia-mcp-updater.php","source":{"adapter":"git","remote":"https://github.com/bjornfix/devenia-mcp-updater.git","commit":"c0d5c4d0caac4d6b24c1de06089ff820e8a0a1c8","tree":"2e21e9bba7faff9cd598b14bfd99a2ac85eb4eff","path":"."},"members":[{"path":"devenia-mcp-updater/devenia-mcp-updater.php","size":47119,"sha256":"8466098793010dca7d9548bf9e1dac9b3343578cbf3d93798a3c3f9e454ed623"},{"path":"devenia-mcp-updater/readme.txt","size":5392,"sha256":"2316d992488e1d0ae93e699a3f473d20b9b8904652c5d88ef4c6dc2fccf57a5f"}],"membersSha256":"40404f17fe906cca51e3c19d5bab921a051c6401fa24fbc3014da34b6a6a46ad"}', true );
 if ( ! is_array( $historical_identity ) || ! devenia_mcp_updater_release_identity_provenance_is_valid( $historical_identity ) ) {
 	throw new RuntimeException( 'An exact already-signed historical identity was rejected.' );
@@ -552,6 +598,44 @@ for ( $attempt = 2; $attempt <= 3; $attempt++ ) {
 }
 if ( 'blocked' !== ( $retry_state['status'] ?? '' ) || 3 !== ( $retry_state['attempts'] ?? 0 ) || $health_requests_before_retry + 3 !== $GLOBALS['fixture_health_requests'] ) {
 	throw new RuntimeException( 'Receipt migration did not stop after its finite retry budget.' );
+}
+
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( $plugins );
+$GLOBALS['fixture_installed'][ $plugin_file ] = array( 'Version' => $version );
+$GLOBALS['fixture_active'][ $plugin_file ] = true;
+$GLOBALS['fixture_rollback_calls'] = array();
+devenia_mcp_updater_capture_preinstall( true, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+unset( $GLOBALS['fixture_installed'][ $plugin_file ] );
+devenia_mcp_updater_after_plugin_upgrade( null, array( 'type' => 'plugin', 'plugin' => $plugin_file ) );
+if (
+	1 !== count( $GLOBALS['fixture_rollback_calls'] )
+	|| ! isset( $GLOBALS['fixture_installed'][ $plugin_file ] )
+	|| '3.0.77' !== ( $GLOBALS['fixture_installed'][ $plugin_file ]['Version'] ?? '' )
+	|| true !== ( $GLOBALS['fixture_rollback_calls'][0]['overwrite_package'] ?? false )
+) {
+	throw new RuntimeException( 'An incomplete managed-plugin rollout was not restored through the WordPress Plugin Upgrader.' );
+}
+
+$rollback_entry = $plugins[0];
+$prior_state = array( 'active' => true );
+$call_count = count( $GLOBALS['fixture_rollback_calls'] );
+$missing_authority = $rollback_entry;
+$missing_authority['rollback']['available'] = false;
+$rejected = devenia_mcp_updater_restore_incomplete_rollout( $plugin_file, $prior_state, $missing_authority );
+if ( 'rollback_authority_unavailable' !== $rejected['code'] || $call_count !== count( $GLOBALS['fixture_rollback_calls'] ) ) {
+	throw new RuntimeException( 'Missing signed recovery authority reached the installer.' );
+}
+file_put_contents( $rollback_fixture_file, 'tampered package' );
+$rejected = devenia_mcp_updater_restore_incomplete_rollout( $plugin_file, $prior_state, $rollback_entry );
+if ( 'rollback_package_invalid' !== $rejected['code'] || $call_count !== count( $GLOBALS['fixture_rollback_calls'] ) || is_file( $rollback_fixture_file ) ) {
+	throw new RuntimeException( 'An invalid recovery package was not rejected and removed before installation.' );
+}
+file_put_contents( $rollback_fixture_file, $rollback_bytes );
+$GLOBALS['fixture_rollback_result'] = false;
+$rejected = devenia_mcp_updater_restore_incomplete_rollout( $plugin_file, $prior_state, $rollback_entry );
+unset( $GLOBALS['fixture_rollback_result'] );
+if ( 'rollback_install_failed' !== $rejected['code'] || ! empty( $GLOBALS['devenia_mcp_updater_rollback_in_progress'] ) || is_file( $rollback_fixture_file ) ) {
+	throw new RuntimeException( 'An incomplete native installation was reported as success or left recovery state behind.' );
 }
 
 fwrite( STDOUT, "Exact manifest/update-offer identity runtime passed.\n" );

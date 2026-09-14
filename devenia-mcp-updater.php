@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.15
+ * Version: 0.1.16
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.15' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.16' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -42,6 +42,7 @@ define( 'DEVENIA_MCP_UPDATER_UPLOAD_GATE_RETIREMENT_OPTION', 'devenia_mcp_update
 $GLOBALS['devenia_mcp_updater_rollout_changed'] = array();
 $GLOBALS['devenia_mcp_updater_rollout_terminal_candidates'] = array();
 $GLOBALS['devenia_mcp_updater_pending_upload_entry'] = null;
+$GLOBALS['devenia_mcp_updater_rollback_in_progress'] = false;
 
 /** One request-owned key prevents predecessor/successor pending replacement. */
 function devenia_mcp_updater_rollout_pending_key( string $rollout_id ): string {
@@ -677,6 +678,89 @@ function devenia_mcp_updater_find_legacy_duplicates( array $installed, array $ma
 }
 
 /**
+ * Restore the signed rollback package when an update leaves no loadable plugin.
+ *
+ * WordPress can finish an upgrader transaction while the destination contains
+ * only a partial package. Restore the exact manifest-bound rollback package
+ * through WordPress' own Plugin Upgrader before the next request.
+ *
+ * @param string              $plugin_file Canonical plugin file.
+ * @param array<string,mixed> $prior       Captured pre-install state.
+ * @param array<string,mixed> $entry       Current signed manifest entry.
+ * @return array<string,mixed>
+ */
+function devenia_mcp_updater_restore_incomplete_rollout( string $plugin_file, array $prior, array $entry ): array {
+	if ( ! empty( $GLOBALS['devenia_mcp_updater_rollback_in_progress'] ) ) {
+		return array( 'success' => false, 'code' => 'rollback_reentrant' );
+	}
+
+	$rollback = is_array( $entry['rollback'] ?? null ) ? $entry['rollback'] : array();
+	$package  = esc_url_raw( (string) ( $rollback['package'] ?? '' ) );
+	$sha256   = strtolower( preg_replace( '/[^a-f0-9]/', '', (string) ( $rollback['sha256'] ?? '' ) ) );
+	$slug     = dirname( $plugin_file );
+	if (
+		true !== ( $rollback['available'] ?? false )
+		|| '' === $package
+		|| 64 !== strlen( $sha256 )
+		|| ! devenia_mcp_updater_is_allowed_package_url( $package )
+		|| ! hash_equals( sprintf( 'https://downloads.devenia.com/artifacts/%1$s/%2$s/%1$s.zip', $slug, $sha256 ), $package )
+	) {
+		return array( 'success' => false, 'code' => 'rollback_authority_unavailable' );
+	}
+
+	if ( ! function_exists( 'download_url' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+	}
+	$downloaded = download_url( $package, 60 );
+	if ( is_wp_error( $downloaded ) ) {
+		return array( 'success' => false, 'code' => 'rollback_download_failed', 'message' => $downloaded->get_error_message() );
+	}
+	$verified = devenia_mcp_updater_verify_package_file(
+		array( 'file' => $plugin_file, 'sha256' => $sha256 ),
+		(string) $downloaded
+	);
+	if ( is_wp_error( $verified ) ) {
+		return array( 'success' => false, 'code' => 'rollback_package_invalid', 'message' => $verified->get_error_message() );
+	}
+
+	if ( ! class_exists( 'Plugin_Upgrader', false ) ) {
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+	}
+	$GLOBALS['devenia_mcp_updater_rollback_in_progress'] = true;
+	try {
+		$upgrader = new Plugin_Upgrader( new Automatic_Upgrader_Skin() );
+		$result   = $upgrader->install( (string) $verified, array( 'overwrite_package' => true ) );
+	} finally {
+		$GLOBALS['devenia_mcp_updater_rollback_in_progress'] = false;
+		wp_delete_file( (string) $verified );
+	}
+
+	if ( true !== $result ) {
+		return array(
+			'success' => false,
+			'code'    => 'rollback_install_failed',
+			'message' => is_wp_error( $result ) ? $result->get_error_message() : 'WordPress did not complete the rollback installation.',
+		);
+	}
+
+	wp_clean_plugins_cache( true );
+	$installed = get_plugins();
+	if ( ! isset( $installed[ $plugin_file ] ) ) {
+		return array( 'success' => false, 'code' => 'rollback_plugin_still_missing' );
+	}
+	if ( ! empty( $prior['active'] ) && ! devenia_mcp_updater_mark_plugin_active_for_next_request( $plugin_file ) ) {
+		return array( 'success' => false, 'code' => 'rollback_activation_restore_failed' );
+	}
+
+	return array(
+		'success'          => true,
+		'plugin'           => $plugin_file,
+		'rollback_version' => (string) ( $rollback['version'] ?? '' ),
+		'package_sha256'   => $sha256,
+	);
+}
+
+/**
  * Mark a canonical plugin file active without loading its PHP in this request.
  *
  * This is only used when replacing an already-loaded duplicate plugin copy.
@@ -811,6 +895,42 @@ function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra 
 	unset( $upgrader );
 	if ( 'plugin' !== ( $hook_extra['type'] ?? '' ) ) {
 		return;
+	}
+
+	$plugin_files = array();
+	if ( isset( $hook_extra['plugin'] ) && is_string( $hook_extra['plugin'] ) ) {
+		$plugin_files[] = $hook_extra['plugin'];
+	}
+	if ( isset( $hook_extra['plugins'] ) && is_array( $hook_extra['plugins'] ) ) {
+		$plugin_files = array_merge( $plugin_files, array_map( 'strval', $hook_extra['plugins'] ) );
+	}
+	if ( empty( $GLOBALS['devenia_mcp_updater_rollback_in_progress'] ) ) {
+		devenia_mcp_updater_require_plugin_helpers();
+		wp_clean_plugins_cache( true );
+		$installed = get_plugins();
+		$managed   = devenia_mcp_updater_manifest_plugins( true );
+		foreach ( array_values( array_unique( $plugin_files ) ) as $plugin_file ) {
+			$prior = is_array( $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ] ?? null )
+				? $GLOBALS['devenia_mcp_updater_rollout_prior'][ $plugin_file ]
+				: array();
+			if ( isset( $installed[ $plugin_file ] ) || empty( $prior ) || ! isset( $managed[ $plugin_file ] ) ) {
+				continue;
+			}
+			$recovery = devenia_mcp_updater_restore_incomplete_rollout( $plugin_file, $prior, $managed[ $plugin_file ] );
+			if ( ! empty( $recovery['success'] ) ) {
+				devenia_mcp_updater_record_status(
+					'rollout_recovered',
+					'An incomplete managed-plugin rollout was restored from its signed rollback package.',
+					array( 'plugin' => $plugin_file, 'recovery' => $recovery )
+				);
+			} else {
+				devenia_mcp_updater_record_status(
+					'rollout_recovery_failed',
+					'An incomplete managed-plugin rollout could not be restored automatically.',
+					array( 'plugin' => $plugin_file, 'recovery' => $recovery )
+				);
+			}
+		}
 	}
 
 	devenia_mcp_updater_reconcile_legacy_duplicates( true );
