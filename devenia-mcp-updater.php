@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.16
+ * Version: 0.1.17
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.16' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.17' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -906,7 +906,8 @@ function devenia_mcp_updater_after_plugin_upgrade( $upgrader, array $hook_extra 
 	}
 	if ( empty( $GLOBALS['devenia_mcp_updater_rollback_in_progress'] ) ) {
 		devenia_mcp_updater_require_plugin_helpers();
-		wp_clean_plugins_cache( true );
+		// Refresh installed headers without erasing offers for the remaining native updates.
+		wp_clean_plugins_cache( false );
 		$installed = get_plugins();
 		$managed   = devenia_mcp_updater_manifest_plugins( true );
 		foreach ( array_values( array_unique( $plugin_files ) ) as $plugin_file ) {

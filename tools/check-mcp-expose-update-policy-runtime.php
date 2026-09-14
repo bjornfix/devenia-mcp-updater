@@ -69,7 +69,7 @@ function add_option( $key, $value, ...$args ): bool { unset( $args ); if ( $key 
 function delete_option( $key ): bool { if ( ! array_key_exists( $key, $GLOBALS['fixture_options'] ) ) return false; unset( $GLOBALS['fixture_options'][ $key ] ); return true; }
 function get_option( $key, $default = false ) { return $GLOBALS['fixture_options'][ $key ] ?? $default; }
 function wp_generate_uuid4(): string { $GLOBALS['fixture_uuid']++; return '00000000-0000-4000-8000-' . str_pad( (string) $GLOBALS['fixture_uuid'], 12, '0', STR_PAD_LEFT ); }
-function wp_clean_plugins_cache( ...$args ): void { unset( $args ); }
+function wp_clean_plugins_cache( $clear_update_cache = true ): void { if ( ! empty( $GLOBALS['fixture_enforce_update_cache'] ) && $clear_update_cache ) { $GLOBALS['fixture_updates'] = false; } }
 function download_url( string $url, int $timeout = 300 ) { unset( $url, $timeout ); return $GLOBALS['fixture_rollback_package'] ?? new WP_Error( 'missing_fixture_package', 'Missing rollback fixture package.' ); }
 class Automatic_Upgrader_Skin {}
 class Plugin_Upgrader {
@@ -639,3 +639,12 @@ if ( 'rollback_install_failed' !== $rejected['code'] || ! empty( $GLOBALS['deven
 }
 
 fwrite( STDOUT, "Exact manifest/update-offer identity runtime passed.\n" );
+
+$GLOBALS['fixture_enforce_update_cache'] = true;
+$GLOBALS['fixture_updates'] = (object) array( 'response' => array( 'next/next.php' => (object) array( 'new_version' => '2.0' ) ) );
+$remaining_updates = $GLOBALS['fixture_updates'];
+devenia_mcp_updater_after_plugin_upgrade( null, array( 'type' => 'plugin' ) );
+if ( $remaining_updates !== get_site_transient( 'update_plugins' ) ) {
+    throw new RuntimeException( 'Completing one plugin erased the remaining native update offers.' );
+}
+fwrite( STDOUT, "Remaining native update offers survive plugin completion.\n" );
