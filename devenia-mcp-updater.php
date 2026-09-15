@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.17
+ * Version: 0.1.18
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.17' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.18' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -210,7 +210,8 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 		&& empty( $plugin_check['policyException'] )
 		&& 'wp-plugin-check-exit-zero-strict-json-or-native-empty-v1' === (string) ( $plugin_check['gateEvidence'] ?? '' );
 	$exception_quality = 'approved-policy-exception' === (string) ( $plugin_check['qualityDecision'] ?? '' )
-		&& devenia_mcp_updater_is_exact_quality_exception( $slug, $plugin_check['policyException'] ?? null );
+		&& devenia_mcp_updater_is_exact_quality_exception( $slug, $plugin_check['policyException'] ?? null )
+		&& ( 'static-publication' !== $slug || 0 === (int) ( $plugin_check['errorCount'] ?? -1 ) );
 	if (
 		'passed' !== ( $plugin_check['status'] ?? '' ) ||
 		$sha256 !== strtolower( (string) ( $plugin_check['sha256'] ?? '' ) ) ||
@@ -239,6 +240,12 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 /** Accept only the centrally approved, exact Plugin Check exceptions. */
 function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exception ): bool {
 	$approved = array(
+		'static-publication' => array(
+			'status' => 'atomic-database-waived',
+			'reason' => 'Accepted atomic database exception: native option-row locks, durable event inventory, and cleanup require fresh database reads or conditional writes. Preserve these operations after native SEO and isolated checkpoint-concurrency tests pass; no other warning is accepted.',
+			'allowedCodes' => array( 'WordPress.DB.DirectDatabaseQuery.DirectQuery', 'WordPress.DB.DirectDatabaseQuery.NoCaching' ),
+			'requiredDetected' => array( 'Use of a direct database call is discouraged.', 'Direct database call without caching detected.' ),
+		),
 		'devenia-mcp-updater' => array(
 			'status' => 'private-infrastructure-waived',
 			'reason' => 'This bootstrap plugin owns the authenticated private updater channel and is intentionally not a WordPress.org-hosted updater.',

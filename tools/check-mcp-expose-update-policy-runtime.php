@@ -219,6 +219,46 @@ $schema_3_git_entry = $plugins[0];
 if ( null === devenia_mcp_updater_normalize_entry( $schema_3_git_entry ) ) {
 	throw new RuntimeException( 'A locally authoritative schema-3 Git release identity was rejected.' );
 }
+$atomic_entry = $schema_3_git_entry;
+$atomic_entry['slug'] = 'static-publication';
+$atomic_entry['file'] = 'static-publication/static-publication.php';
+$atomic_entry['package'] = 'https://downloads.devenia.com/artifacts/static-publication/' . $sha256 . '/static-publication.zip';
+$atomic_entry['releaseIdentity']['slug'] = $atomic_entry['slug'];
+$atomic_entry['releaseIdentity']['mainFile'] = $atomic_entry['file'];
+$atomic_entry['releaseIdentity']['members'][0]['path'] = $atomic_entry['file'];
+$atomic_entry['releaseIdentity']['membersSha256'] = hash( 'sha256', json_encode( $atomic_entry['releaseIdentity']['members'], JSON_UNESCAPED_SLASHES ) );
+$atomic_entry['pluginCheck']['qualityDecision'] = 'approved-policy-exception';
+$atomic_entry['pluginCheck']['warningCount'] = 16;
+$atomic_entry['pluginCheck']['policyException'] = array(
+	'status' => 'atomic-database-waived',
+	'reason' => 'Accepted atomic database exception: native option-row locks, durable event inventory, and cleanup require fresh database reads or conditional writes. Preserve these operations after native SEO and isolated checkpoint-concurrency tests pass; no other warning is accepted.',
+	'allowedCodes' => array( 'WordPress.DB.DirectDatabaseQuery.DirectQuery', 'WordPress.DB.DirectDatabaseQuery.NoCaching' ),
+	'requiredDetected' => array( 'Use of a direct database call is discouraged.', 'Direct database call without caching detected.' ),
+);
+if ( null === devenia_mcp_updater_normalize_entry( $atomic_entry ) ) {
+	throw new RuntimeException( 'The approved atomic database exception was rejected by the update consumer.' );
+}
+$invalid_atomic_entries = array();
+$invalid_atomic_entries['unapproved warning'] = $atomic_entry;
+$invalid_atomic_entries['unapproved warning']['pluginCheck']['policyException']['allowedCodes'][] = 'another_warning';
+$invalid_atomic_entries['missing required finding'] = $atomic_entry;
+array_pop( $invalid_atomic_entries['missing required finding']['pluginCheck']['policyException']['requiredDetected'] );
+$invalid_atomic_entries['plugin error'] = $atomic_entry;
+$invalid_atomic_entries['plugin error']['pluginCheck']['errorCount'] = 1;
+$invalid_atomic_entries['unapproved plugin'] = $schema_3_git_entry;
+$invalid_atomic_entries['unapproved plugin']['pluginCheck'] = $atomic_entry['pluginCheck'];
+foreach ( $invalid_atomic_entries as $label => $invalid_atomic_entry ) {
+	if ( null !== devenia_mcp_updater_normalize_entry( $invalid_atomic_entry ) ) {
+		throw new RuntimeException( 'Atomic database exception was broadened: ' . $label );
+	}
+}
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $atomic_entry ) );
+$GLOBALS['fixture_installed'][ $atomic_entry['file'] ] = array( 'Version' => '1.0.0' );
+$atomic_updates = devenia_mcp_updater_filter_update_plugins( (object) array( 'response' => array() ) );
+if ( ( $atomic_updates->response[ $atomic_entry['file'] ]->package ?? '' ) !== $atomic_entry['package'] ) {
+	throw new RuntimeException( 'WordPress did not receive the signed static publication update offer.' );
+}
+unset( $GLOBALS['fixture_installed'][ $atomic_entry['file'] ] );
 $schema_3_remote_entry = $schema_3_git_entry;
 $schema_3_remote_entry['releaseIdentity']['source']['remote'] = 'ssh://storage.example.invalid/repository.git';
 if ( null !== devenia_mcp_updater_normalize_entry( $schema_3_remote_entry ) ) {

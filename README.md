@@ -2,14 +2,14 @@
 
 Keep Devenia-managed WordPress plugins current through a Devenia-controlled update channel.
 
-[![Release 0.1.17](https://img.shields.io/badge/release-0.1.17-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
+[![Release 0.1.18](https://img.shields.io/badge/release-0.1.18-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8%2B-blue.svg)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.1
 
-**Stable tag:** 0.1.17
+**Stable tag:** 0.1.18
 
 **License:** GPLv2 or later
 
@@ -99,6 +99,10 @@ The plugin integrates with WordPress' native plugin-update hooks and the structu
 4. Run a normal WordPress update check.
 
 ## Recent Changes
+
+### 0.1.18
+
+Recognises approved Static Publication packages in the signed update channel.
 
 ### 0.1.17
 
