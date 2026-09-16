@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
- * Description: Private update channel and automatic sync for Devenia MCP and Abilities plugins.
- * Version: 0.1.18
+ * Description: Verified updates for Devenia plugins through WordPress, with automatic updates controlled by the site owner.
+ * Version: 0.1.19
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.18' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.19' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -1380,19 +1380,6 @@ function devenia_mcp_updater_filter_update_plugins( $transient ) {
 	return $transient;
 }
 add_filter( 'pre_set_site_transient_update_plugins', 'devenia_mcp_updater_filter_update_plugins' );
-
-/**
- * Enable unattended auto-updates for every installed plugin.
- *
- * @param bool|null $update Whether to auto-update.
- * @param object    $item   Update item.
- * @return bool|null
- */
-function devenia_mcp_updater_auto_update_plugin( $update, $item ) {
-	unset( $update, $item );
-	return true;
-}
-add_filter( 'auto_update_plugin', 'devenia_mcp_updater_auto_update_plugin', 10, 2 );
 
 /**
  * Verify one downloaded package file against its authenticated manifest entry.

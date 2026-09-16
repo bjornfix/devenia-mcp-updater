@@ -38,7 +38,7 @@ $GLOBALS['fixture_rollback_version'] = '';
 $GLOBALS['fixture_rollback_calls'] = array();
 
 function add_action( ...$args ): void { unset( $args ); }
-function add_filter( ...$args ): void { unset( $args ); }
+function add_filter( ...$args ): void { $GLOBALS['fixture_filters'][ $args[0] ][] = $args; }
 function remove_filter( ...$args ): void { unset( $args ); }
 function register_activation_hook( ...$args ): void { unset( $args ); }
 function is_wp_error( $value ): bool { return $value instanceof WP_Error; }
@@ -123,11 +123,8 @@ function add_query_arg( string $key, string $value, string $url ): string { retu
 
 require_once dirname( __DIR__ ) . '/devenia-mcp-updater.php';
 
-if ( true !== devenia_mcp_updater_auto_update_plugin( false, (object) array( 'plugin' => 'wordfence/wordfence.php' ) ) ) {
-	throw new RuntimeException( 'A third-party plugin update was not enrolled automatically.' );
-}
-if ( true !== devenia_mcp_updater_auto_update_plugin( null, (object) array( 'plugin' => 'future-plugin/future-plugin.php' ) ) ) {
-	throw new RuntimeException( 'A future plugin update was not enrolled automatically.' );
+if ( ! empty( $GLOBALS['fixture_filters']['auto_update_plugin'] ) ) {
+	throw new RuntimeException( 'The update channel must leave automatic-update choices to WordPress and the site owner.' );
 }
 
 function fixture_canonicalize( $value ) {
