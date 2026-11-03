@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.20
+Stable tag: 0.1.21
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -72,6 +72,9 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.21 =
+* Show the installed updater version and its verified terminal installation result on the private updates screen.
 
 = 0.1.20 =
 * Add authenticated, site-scoped private update discovery and downloads through the native WordPress updater.

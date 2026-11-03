@@ -2,14 +2,14 @@
 
 Keep Devenia-managed WordPress plugins current through a Devenia-controlled update channel.
 
-[![Release 0.1.20](https://img.shields.io/badge/release-0.1.20-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
+[![Release 0.1.21](https://img.shields.io/badge/release-0.1.21-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8%2B-blue.svg)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.1
 
-**Stable tag:** 0.1.20
+**Stable tag:** 0.1.21
 
 **License:** GPLv2 or later
 
@@ -106,6 +106,10 @@ Private access is opt-in for each site. Configuration uses `DEVENIA_MCP_UPDATER_
 4. Run a normal WordPress update check.
 
 ## Recent Changes
+
+### 0.1.21
+
+Shows the installed updater version and its verified terminal installation result on the private updates screen.
 
 ### 0.1.20
 

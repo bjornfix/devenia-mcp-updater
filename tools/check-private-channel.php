@@ -40,4 +40,10 @@ $last=end($requests);$assert(!file_exists($last[1]['filename']),'bad package rem
 $privateEnvelope=$sign($payload);$responseCode=403;$assert(is_wp_error(devenia_mcp_updater_private_download($private)),'revoked package rejected');
 $report=devenia_mcp_updater_verify_private_sources();$assert($report['status']==='failed'&&count($report['missingFiles'])===1,'empty discovery is not a passing download verification');
 $responseCode=200;$downloadBody=$upload_bytes;$report=devenia_mcp_updater_verify_private_sources();$assert($report['status']==='passed'&&count($report['results'])===1&&$report['results'][0]['bytes']===strlen($upload_bytes),'same qualified version can be verified without installation');
+$self=['plugin'=>'devenia-mcp-updater/devenia-mcp-updater.php','rolloutId'=>'fixture-private-self','newVersion'=>DEVENIA_MCP_UPDATER_VERSION,'status'=>'passed','unexpectedSecret'=>'not-for-display'];
+$GLOBALS['fixture_options'][DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION]=[$self];
+$assert(devenia_mcp_updater_private_self_receipt()===null,'mutable list alone is not terminal evidence');
+$GLOBALS['fixture_options'][devenia_mcp_updater_rollout_receipt_key($self['rolloutId'])]=$self;
+$selfResult=devenia_mcp_updater_private_self_receipt();
+$assert($selfResult['status']==='passed'&&!isset($selfResult['unexpectedSecret']),'only immutable safe terminal result is displayed');
 echo json_encode(['private_passed'=>$count,'failed'=>0])."\n";

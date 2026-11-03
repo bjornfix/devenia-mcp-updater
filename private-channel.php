@@ -134,6 +134,24 @@ function devenia_mcp_updater_verify_private_sources(): array {
 	return array( 'checkedAt' => gmdate( 'c' ), 'status' => $passed ? 'passed' : 'failed', 'missingFiles' => $missing, 'results' => $results );
 }
 
+/** Read the updater's latest immutable terminal result without exposing option contents.
+ *
+ * @return array|null
+ */
+function devenia_mcp_updater_private_self_receipt(): ?array {
+	$receipts = get_option( DEVENIA_MCP_UPDATER_ROLLOUT_RECEIPTS_OPTION, array() );
+	foreach ( array_reverse( is_array( $receipts ) ? $receipts : array() ) as $receipt ) {
+		if ( ! is_array( $receipt ) || 'devenia-mcp-updater/devenia-mcp-updater.php' !== ( $receipt['plugin'] ?? '' ) || empty( $receipt['rolloutId'] ) ) {
+			continue;
+		}
+		if ( $receipt !== get_option( devenia_mcp_updater_rollout_receipt_key( (string) $receipt['rolloutId'] ) ) ) {
+			continue;
+		}
+		return array_intersect_key( $receipt, array_flip( array( 'rolloutId', 'priorVersion', 'newVersion', 'actualVersion', 'packageSha256', 'active', 'priorActive', 'activationPreserved', 'priorStateCaptured', 'health', 'healthHttpStatus', 'status', 'completedAt' ) ) );
+	}
+	return null;
+}
+
 /** Add a bounded native check only on a site that is explicitly configured.
  *
  * @return void
@@ -155,6 +173,13 @@ function devenia_mcp_updater_private_admin_page(): void {
 	}
 	$installed = get_plugins();
 	echo '<div class="wrap"><h1>' . esc_html__( 'Private plugin updates', 'devenia-mcp-updater' ) . '</h1>';
+	$receipt = devenia_mcp_updater_private_self_receipt();
+	echo '<h2>' . esc_html__( 'Updater installation', 'devenia-mcp-updater' ) . '</h2><p>' . esc_html( DEVENIA_MCP_UPDATER_VERSION ) . '</p>';
+	if ( null !== $receipt ) {
+		echo '<pre>' . esc_html( wp_json_encode( $receipt, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) ) . '</pre>';
+	} else {
+		echo '<p>' . esc_html__( 'No terminal updater installation result is available.', 'devenia-mcp-updater' ) . '</p>';
+	}
 	echo '<p>' . esc_html__( 'Verify the configured private sources and download their qualified packages without installing them.', 'devenia-mcp-updater' ) . '</p><ul>';
 	$entries = devenia_mcp_updater_private_plugins();
 	if ( empty( $entries ) ) {
