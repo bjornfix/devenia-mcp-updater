@@ -55,7 +55,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 
 For private updates, an administrator provisions `DEVENIA_MCP_UPDATER_PRIVATE_SITE`, `DEVENIA_MCP_UPDATER_PRIVATE_TOKEN` and `DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS` through secure WordPress configuration. The credential and private inventory must stay outside public plugin packages and URLs. Unconfigured sites receive no private releases.
 
-The plugin has no settings screen. Keep a restorable backup, then check the installed version and important site functions after an update; automatic-update eligibility does not prove completion.
+The plugin has no credential settings screen. Configured administrators can use Tools → Private updates to verify signed sources and download qualified packages without installing them. Keep a restorable backup, then check the installed version and important site functions after an update; automatic-update eligibility does not prove completion.
 
 == Frequently Asked Questions ==
 

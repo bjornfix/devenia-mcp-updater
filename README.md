@@ -86,7 +86,7 @@ The plugin integrates with WordPress' native plugin-update hooks and the structu
 
 An administrator can provision a site-scoped credential and an explicit list of private plugin files. The updater then obtains signed private release information and downloads through an authenticated channel on Devenia infrastructure. The private inventory must name the configured site, and each downloaded package must match its qualified release identity and hash.
 
-Private access is opt-in for each site. Configuration uses `DEVENIA_MCP_UPDATER_PRIVATE_SITE`, `DEVENIA_MCP_UPDATER_PRIVATE_TOKEN` and `DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS` in secure WordPress configuration. Keep the credential outside public directories, plugin packages and URLs. The public channel remains available when private access is unconfigured or refused. Automatic-update choices remain in WordPress.
+Private access is opt-in for each site. Configuration uses `DEVENIA_MCP_UPDATER_PRIVATE_SITE`, `DEVENIA_MCP_UPDATER_PRIVATE_TOKEN` and `DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS` in secure WordPress configuration. Keep the credential outside public directories, plugin packages and URLs. The public channel remains available when private access is unconfigured or refused. Automatic-update choices remain in WordPress. Under Tools → Private updates, administrators can verify the real native package-download path even when the same qualified version is already installed.
 
 ## Safety and Ownership
 

@@ -105,3 +105,83 @@ function devenia_mcp_updater_private_download( array $entry ) {
 	}
 	return devenia_mcp_updater_verify_package_file( $entry, $tmp );
 }
+
+/** Exercise native package downloads without inventing an installed update version.
+ *
+ * @return array
+ */
+function devenia_mcp_updater_verify_private_sources(): array {
+	if ( ! class_exists( 'WP_Upgrader' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+	}
+	$results = array();
+	$upgrader = new WP_Upgrader( new Automatic_Upgrader_Skin() );
+	foreach ( devenia_mcp_updater_private_plugins() as $file => $entry ) {
+		$package = $upgrader->download_package( $entry['package'], false, array( 'type' => 'plugin', 'plugin' => $file ) );
+		$result = array( 'file' => $file, 'version' => $entry['version'], 'sha256' => $entry['sha256'], 'status' => 'failed' );
+		if ( is_wp_error( $package ) ) {
+			$result['error'] = $package->get_error_code();
+		} else {
+			$result['status'] = 'passed';
+			$result['bytes'] = filesize( $package );
+			wp_delete_file( $package );
+		}
+		$results[] = $result;
+	}
+	return array( 'checkedAt' => gmdate( 'c' ), 'results' => $results );
+}
+
+/** Add a bounded native check only on a site that is explicitly configured.
+ *
+ * @return void
+ */
+function devenia_mcp_updater_private_admin_menu(): void {
+	if ( null !== devenia_mcp_updater_private_config() ) {
+		add_management_page( __( 'Private plugin updates', 'devenia-mcp-updater' ), __( 'Private updates', 'devenia-mcp-updater' ), 'update_plugins', 'devenia-private-updates', 'devenia_mcp_updater_private_admin_page' );
+	}
+}
+add_action( 'admin_menu', 'devenia_mcp_updater_private_admin_menu' );
+
+/** Render private source state and a native download verification action.
+ *
+ * @return void
+ */
+function devenia_mcp_updater_private_admin_page(): void {
+	if ( ! current_user_can( 'update_plugins' ) ) {
+		return;
+	}
+	$installed = get_plugins();
+	echo '<div class="wrap"><h1>' . esc_html__( 'Private plugin updates', 'devenia-mcp-updater' ) . '</h1>';
+	echo '<p>' . esc_html__( 'Verify the configured private sources and download their qualified packages without installing them.', 'devenia-mcp-updater' ) . '</p><ul>';
+	foreach ( devenia_mcp_updater_private_plugins() as $file => $entry ) {
+		echo '<li>' . esc_html( $file . ': ' . $entry['version'] . ' / ' . ( $installed[ $file ]['Version'] ?? '' ) ) . '</li>';
+	}
+	echo '</ul><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="devenia_verify_private_updates">';
+	wp_nonce_field( 'devenia_verify_private_updates' );
+	submit_button( __( 'Verify private downloads', 'devenia-mcp-updater' ) );
+	echo '</form>';
+	$report = get_option( 'devenia_mcp_updater_private_verification', array() );
+	if ( ! empty( $report['checkedAt'] ) ) {
+		echo '<p>' . esc_html( $report['checkedAt'] ) . '</p><ul>';
+		foreach ( $report['results'] ?? array() as $result ) {
+			echo '<li>' . esc_html( $result['file'] . ': ' . $result['status'] . ' / ' . (string) ( $result['bytes'] ?? 0 ) . ' bytes' ) . '</li>';
+		}
+		echo '</ul>';
+	}
+	echo '</div>';
+}
+
+/** Verify authorized sources through WordPress; no arbitrary URL or plugin input.
+ *
+ * @return void
+ */
+function devenia_mcp_updater_private_admin_verify(): void {
+	if ( ! current_user_can( 'update_plugins' ) || null === devenia_mcp_updater_private_config() ) {
+		wp_die( esc_html__( 'Private update access is not configured.', 'devenia-mcp-updater' ) );
+	}
+	check_admin_referer( 'devenia_verify_private_updates' );
+	update_option( 'devenia_mcp_updater_private_verification', devenia_mcp_updater_verify_private_sources(), false );
+	wp_safe_redirect( admin_url( 'tools.php?page=devenia-private-updates' ) );
+	exit;
+}
+add_action( 'admin_post_devenia_verify_private_updates', 'devenia_mcp_updater_private_admin_verify' );
