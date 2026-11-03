@@ -128,7 +128,10 @@ function devenia_mcp_updater_verify_private_sources(): array {
 		}
 		$results[] = $result;
 	}
-	return array( 'checkedAt' => gmdate( 'c' ), 'results' => $results );
+	$config = devenia_mcp_updater_private_config();
+	$missing = array_values( array_diff( $config['files'] ?? array(), array_column( $results, 'file' ) ) );
+	$passed = ! empty( $results ) && empty( $missing ) && count( array_filter( $results, static function ( $row ) { return 'passed' !== $row['status']; } ) ) === 0;
+	return array( 'checkedAt' => gmdate( 'c' ), 'status' => $passed ? 'passed' : 'failed', 'missingFiles' => $missing, 'results' => $results );
 }
 
 /** Add a bounded native check only on a site that is explicitly configured.
@@ -153,8 +156,12 @@ function devenia_mcp_updater_private_admin_page(): void {
 	$installed = get_plugins();
 	echo '<div class="wrap"><h1>' . esc_html__( 'Private plugin updates', 'devenia-mcp-updater' ) . '</h1>';
 	echo '<p>' . esc_html__( 'Verify the configured private sources and download their qualified packages without installing them.', 'devenia-mcp-updater' ) . '</p><ul>';
-	foreach ( devenia_mcp_updater_private_plugins() as $file => $entry ) {
-		echo '<li>' . esc_html( $file . ': ' . $entry['version'] . ' / ' . ( $installed[ $file ]['Version'] ?? '' ) ) . '</li>';
+	$entries = devenia_mcp_updater_private_plugins();
+	if ( empty( $entries ) ) {
+		echo '<li>' . esc_html__( 'No authorized private release information is available.', 'devenia-mcp-updater' ) . '</li>';
+	}
+	foreach ( $entries as $file => $entry ) {
+		echo '<li>' . esc_html( $file . ' — ' . __( 'Qualified', 'devenia-mcp-updater' ) . ': ' . $entry['version'] . ' / ' . __( 'Installed', 'devenia-mcp-updater' ) . ': ' . ( $installed[ $file ]['Version'] ?? '' ) ) . '</li>';
 	}
 	echo '</ul><form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '"><input type="hidden" name="action" value="devenia_verify_private_updates">';
 	wp_nonce_field( 'devenia_verify_private_updates' );
@@ -162,7 +169,7 @@ function devenia_mcp_updater_private_admin_page(): void {
 	echo '</form>';
 	$report = get_option( 'devenia_mcp_updater_private_verification', array() );
 	if ( ! empty( $report['checkedAt'] ) ) {
-		echo '<p>' . esc_html( $report['checkedAt'] ) . '</p><ul>';
+		echo '<p>' . esc_html( $report['checkedAt'] . ' — ' . ( $report['status'] ?? 'failed' ) ) . '</p><ul>';
 		foreach ( $report['results'] ?? array() as $result ) {
 			echo '<li>' . esc_html( $result['file'] . ': ' . $result['status'] . ' / ' . (string) ( $result['bytes'] ?? 0 ) . ' bytes' ) . '</li>';
 		}

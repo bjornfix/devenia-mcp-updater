@@ -17,6 +17,7 @@ define( 'DEVENIA_MCP_UPDATER_MANIFEST_KEY_ID', 'fixture' );
 final class WP_Error {
 	public function __construct( public string $code, public string $message = '' ) {}
 	public function get_error_message(): string { return $this->message; }
+	public function get_error_code(): string { return $this->code; }
 }
 
 $GLOBALS['fixture_manifest'] = array();

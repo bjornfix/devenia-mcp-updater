@@ -3,6 +3,10 @@
 declare(strict_types=1);
 require __DIR__.'/check-mcp-expose-update-policy-runtime.php';
 function wp_tempnam(string $name) { return tempnam(sys_get_temp_dir(),'devenia-private-'); }
+class WP_Upgrader {
+ public function __construct($skin) {}
+ public function download_package($url,...$args){return devenia_mcp_updater_verify_download(false,$url);}
+}
 $GLOBALS['fixture_home_origin']='https://example.com';
 define('DEVENIA_MCP_UPDATER_PRIVATE_TOKEN',bin2hex(random_bytes(32)));
 define('DEVENIA_MCP_UPDATER_PRIVATE_SITE','https://example.com');
@@ -34,4 +38,6 @@ $privateEnvelope=$sign($payload);$file=devenia_mcp_updater_verify_download(false
 $downloadBody='tampered';$result=devenia_mcp_updater_verify_download(false,$private['package']);$assert(is_wp_error($result),'wrong hash rejected');
 $last=end($requests);$assert(!file_exists($last[1]['filename']),'bad package removed');
 $privateEnvelope=$sign($payload);$responseCode=403;$assert(is_wp_error(devenia_mcp_updater_private_download($private)),'revoked package rejected');
+$report=devenia_mcp_updater_verify_private_sources();$assert($report['status']==='failed'&&count($report['missingFiles'])===1,'empty discovery is not a passing download verification');
+$responseCode=200;$downloadBody=$upload_bytes;$report=devenia_mcp_updater_verify_private_sources();$assert($report['status']==='passed'&&count($report['results'])===1&&$report['results'][0]['bytes']===strlen($upload_bytes),'same qualified version can be verified without installation');
 echo json_encode(['private_passed'=>$count,'failed'=>0])."\n";
