@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.19
+Stable tag: 0.1.20
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,7 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 * Allows MCP URL installation only for an exact package in the signed update information
 * Accepts locally anchored package identities without a Git remote
 * Leaves installed plugins untouched when update information is unavailable or invalid
+* Supports explicitly authorized private updates without publishing private inventory or packages
 * Stable plugin download: https://downloads.devenia.com/devenia-mcp-updater.zip
 
 = Requirements =
@@ -52,6 +53,8 @@ The updater does not require an external Git-hosting account. New Git-backed pac
 3. Activate Devenia MCP Updater
 4. Run a normal WordPress update check
 
+For private updates, an administrator provisions `DEVENIA_MCP_UPDATER_PRIVATE_SITE`, `DEVENIA_MCP_UPDATER_PRIVATE_TOKEN` and `DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS` through secure WordPress configuration. The credential and private inventory must stay outside public plugin packages and URLs. Unconfigured sites receive no private releases.
+
 The plugin has no settings screen. Keep a restorable backup, then check the installed version and important site functions after an update; automatic-update eligibility does not prove completion.
 
 == Frequently Asked Questions ==
@@ -69,6 +72,10 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.20 =
+* Add authenticated, site-scoped private update discovery and downloads through the native WordPress updater.
+* Preserve signature, package identity and hash checks, public updates and native automatic-update choices.
 
 = 0.1.19 =
 * Respect the site owner's WordPress automatic-update choices instead of forcing automatic updates for every plugin.

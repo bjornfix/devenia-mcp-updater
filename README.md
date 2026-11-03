@@ -2,14 +2,14 @@
 
 Keep Devenia-managed WordPress plugins current through a Devenia-controlled update channel.
 
-[![Release 0.1.19](https://img.shields.io/badge/release-0.1.19-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
+[![Release 0.1.20](https://img.shields.io/badge/release-0.1.20-blue.svg)](https://downloads.devenia.com/devenia-mcp-updater.zip)
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0)
 [![WordPress](https://img.shields.io/badge/WordPress-6.8%2B-blue.svg)](https://wordpress.org)
 [![PHP](https://img.shields.io/badge/PHP-7.4%2B-purple.svg)](https://php.net)
 
 **Tested up to:** 7.1
 
-**Stable tag:** 0.1.19
+**Stable tag:** 0.1.20
 
 **License:** GPLv2 or later
 
@@ -25,6 +25,7 @@ Devenia MCP Updater connects WordPress' native update system to packages publish
 - Allows MCP URL installation only for an exact package in the signed update list.
 - Accepts locally anchored package identities without relying on an external Git host.
 - Leaves installed plugins untouched when update information is unavailable or invalid.
+- Supports explicitly authorized private plugin updates without exposing private packages in the public channel.
 
 ## The Real Workflow
 
@@ -81,6 +82,12 @@ Install Devenia MCP Updater before the managed Devenia plugins. Activate it, run
 
 The plugin integrates with WordPress' native plugin-update hooks and the structured MCP plugin-upload policy seam. It has no public REST endpoint, no front-end output, and no settings screen. Sites receive Devenia-channel entries only for explicitly managed plugin files. The plugin does not override WordPress automatic-update decisions or change the saved per-plugin choices. Installing or activating it does not enable automatic updates for other plugins. WordPress scheduling, filesystem access, site-wide restrictions, and other update hooks still affect whether an update runs or completes. This plugin does not change theme or WordPress core update policy.
 
+## Private Updates
+
+An administrator can provision a site-scoped credential and an explicit list of private plugin files. The updater then obtains signed private release information and downloads through an authenticated channel on Devenia infrastructure. The private inventory must name the configured site, and each downloaded package must match its qualified release identity and hash.
+
+Private access is opt-in for each site. Configuration uses `DEVENIA_MCP_UPDATER_PRIVATE_SITE`, `DEVENIA_MCP_UPDATER_PRIVATE_TOKEN` and `DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS` in secure WordPress configuration. Keep the credential outside public directories, plugin packages and URLs. The public channel remains available when private access is unconfigured or refused. Automatic-update choices remain in WordPress.
+
 ## Safety and Ownership
 
 - The update list must have a valid Devenia signature.
@@ -99,6 +106,10 @@ The plugin integrates with WordPress' native plugin-update hooks and the structu
 4. Run a normal WordPress update check.
 
 ## Recent Changes
+
+### 0.1.20
+
+Adds authenticated, site-scoped private update discovery and downloads through the native WordPress updater. Private releases retain signature, package identity and hash checks. Public updates and saved automatic-update choices remain available.
 
 ### 0.1.19
 

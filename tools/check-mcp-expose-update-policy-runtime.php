@@ -48,6 +48,9 @@ function esc_url_raw( $value ): string { return (string) $value; }
 function wp_json_encode( $value, int $flags = 0 ): string { return (string) json_encode( $value, $flags ); }
 function wp_parse_url( string $url, int $component ) { return parse_url( $url, $component ); }
 function wp_remote_get( string $url, array $args = array() ): array {
+	if ( isset( $GLOBALS['fixture_private_transport'] ) && 0 === strpos( $url, 'https://downloads.devenia.com/private-updates/' ) ) {
+		return $GLOBALS['fixture_private_transport']( $url, $args );
+	}
 	unset( $args );
 	if ( false !== strpos( $url, 'devenia_rollout_health=' ) ) {
 		$GLOBALS['fixture_health_requests']++;
@@ -118,7 +121,7 @@ function delete_plugins( array $plugins ) {
 	}
 	return true;
 }
-function home_url( string $path = '/' ): string { return 'https://devenia.com' . $path; }
+function home_url( string $path = '/' ): string { return ( $GLOBALS['fixture_home_origin'] ?? 'https://devenia.com' ) . $path; }
 function add_query_arg( string $key, string $value, string $url ): string { return $url . '?' . rawurlencode( $key ) . '=' . rawurlencode( $value ); }
 
 require_once dirname( __DIR__ ) . '/devenia-mcp-updater.php';

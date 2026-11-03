@@ -4,3 +4,5 @@
 - [PHP 7.4 or later](https://www.php.net/releases/7_4_0.php) runs the updater.
 - [PHP Sodium extension](https://www.php.net/manual/en/book.sodium.php) verifies the signed update manifest before a package is accepted.
 - [Devenia update channel](https://downloads.devenia.com/devenia-mcp-manifest.json) provides the signed manifest and content-addressed Devenia plugin packages.
+
+- Optional private updates use a separately provisioned site credential and an explicit plugin-file scope through authenticated HTTPS on the existing Devenia distribution host. Credentials and private inventory are not part of this plugin package.

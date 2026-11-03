@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Verified updates for Devenia plugins through WordPress, with automatic updates controlled by the site owner.
- * Version: 0.1.19
+ * Version: 0.1.20
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -20,7 +20,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.19' );
+require_once __DIR__ . '/private-channel.php';
+
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.20' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -176,9 +178,10 @@ function devenia_mcp_updater_is_allowed_package_url( string $package ): bool {
  * Normalize a plugin manifest entry.
  *
  * @param mixed $entry Raw manifest entry.
+ * @param bool  $private Whether this entry came from site-authorized private delivery.
  * @return array<string,mixed>|null
  */
-function devenia_mcp_updater_normalize_entry( $entry ): ?array {
+function devenia_mcp_updater_normalize_entry( $entry, bool $private = false ): ?array {
 	if ( ! is_array( $entry ) ) {
 		return null;
 	}
@@ -193,10 +196,10 @@ function devenia_mcp_updater_normalize_entry( $entry ): ?array {
 		return null;
 	}
 
-	if ( ! devenia_mcp_updater_is_allowed_package_url( $package ) ) {
+	if ( ! $private && ! devenia_mcp_updater_is_allowed_package_url( $package ) ) {
 		return null;
 	}
-	$expected_package = sprintf( 'https://downloads.devenia.com/artifacts/%1$s/%2$s/%1$s.zip', $slug, $sha256 );
+	$expected_package = $private ? devenia_mcp_updater_private_package_url( $slug, $sha256 ) : sprintf( 'https://downloads.devenia.com/artifacts/%1$s/%2$s/%1$s.zip', $slug, $sha256 );
 	if ( ! hash_equals( $expected_package, $package ) || 0 !== strpos( $file, $slug . '/' ) ) {
 		return null;
 	}
@@ -432,7 +435,7 @@ function devenia_mcp_updater_fingerprint_is_valid( array $fingerprint ): bool {
 function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): array {
 	$manifest = devenia_mcp_updater_get_manifest( $force_refresh );
 	if ( is_wp_error( $manifest ) ) {
-		return array();
+		$manifest = array( 'plugins' => array() );
 	}
 
 	$plugins = array();
@@ -452,6 +455,11 @@ function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): ar
 		}
 	}
 
+	foreach ( devenia_mcp_updater_private_plugins() as $file => $entry ) {
+		if ( ! isset( $plugins[ $file ] ) && ! isset( $slugs[ $entry['slug'] ] ) ) {
+			$plugins[ $file ] = $entry;
+		}
+	}
 	return $plugins;
 }
 
@@ -1434,6 +1442,9 @@ function devenia_mcp_updater_verify_download( $reply, string $package ) {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 	}
 
+	if ( ! empty( $entry['private'] ) ) {
+		return devenia_mcp_updater_private_download( $entry );
+	}
 	$tmp_file = download_url( $package, 60 );
 	if ( is_wp_error( $tmp_file ) ) {
 		devenia_mcp_updater_record_status( 'download_error', $tmp_file->get_error_message(), array( 'plugin' => $entry['file'] ) );
