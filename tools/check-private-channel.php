@@ -46,4 +46,70 @@ $assert(devenia_mcp_updater_private_self_receipt()===null,'mutable list alone is
 $GLOBALS['fixture_options'][devenia_mcp_updater_rollout_receipt_key($self['rolloutId'])]=$self;
 $selfResult=devenia_mcp_updater_private_self_receipt();
 $assert($selfResult['status']==='passed'&&!isset($selfResult['unexpectedSecret']),'only immutable safe terminal result is displayed');
+// Feed the same incoming offers to the updater callback that WordPress registers.
+$private_file = $private['file'];
+$other_file = 'public-fixture/public-fixture.php';
+$sibling_file = $private['slug'] . '/other.php';
+$native_offers = array();
+foreach ( array( $private_file, $other_file, $sibling_file ) as $plugin_file ) {
+	$GLOBALS['fixture_installed'][ $plugin_file ] = array( 'Version' => '1.0.0' );
+	$native_offers[ $plugin_file ] = (object) array(
+		'plugin' => $plugin_file,
+		'package' => 'https://downloads.wordpress.org/plugin/' . dirname( $plugin_file ) . '.zip',
+		'new_version' => '9.0.0',
+	);
+}
+$GLOBALS['fixture_installed'][ $private_file ]['Version'] = '0';
+$update_plugins = static function () use ( $native_offers ) {
+	$transient = (object) array( 'response' => $native_offers, 'no_update' => $native_offers );
+	foreach ( $GLOBALS['fixture_filters']['pre_set_site_transient_update_plugins'] as $registration ) {
+		$transient = $registration[1]( $transient );
+	}
+	return $transient;
+};
+
+$updates = $update_plugins();
+$assert( $updates->response[ $private_file ]->package === $private['package'], 'a signed private offer replaces the native public offer' );
+$assert( $updates->response[ $other_file ] === $native_offers[ $other_file ], 'the normal public offer survives alongside a private offer' );
+
+$without_private_offer = $payload;
+$without_private_offer['plugins'] = array();
+$bad_signature = $sign( $payload );
+$bad_signature['signature']['value'] = base64_encode( str_repeat( 'x', 64 ) );
+foreach ( array(
+	'missing offer' => array( 200, $sign( $without_private_offer ) ),
+	'rejected signature' => array( 200, $bad_signature ),
+	'revoked grant' => array( 404, $sign( $payload ) ),
+) as $scenario => list( $responseCode, $privateEnvelope ) ) {
+	$updates = $update_plugins();
+	$assert( ! isset( $updates->response[ $private_file ] ) && ! isset( $updates->no_update[ $private_file ] ),
+		'offers for the configured plugin file are removed after ' . $scenario );
+	$assert( $updates->response[ $other_file ] === $native_offers[ $other_file ] &&
+		$updates->response[ $sibling_file ] === $native_offers[ $sibling_file ],
+		'public offers for other plugin files survive ' . $scenario );
+}
+
+$responseCode = 200;
+$privateEnvelope = $sign( $payload );
+$GLOBALS['fixture_installed'][ $private_file ]['Version'] = $private['version'];
+$updates = $update_plugins();
+$assert( ! isset( $updates->response[ $private_file ] ) &&
+	$updates->no_update[ $private_file ]->package === $private['package'],
+	'a current private version does not expose a public update' );
+
+$public_copy = $private;
+$public_copy['package'] = sprintf( 'https://downloads.devenia.com/artifacts/%1$s/%2$s/%1$s.zip', $private['slug'], $private['sha256'] );
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $schema_3_git_entry, $public_copy ) );
+$GLOBALS['fixture_installed'][ $private_file ]['Version'] = '0';
+$updates = $update_plugins();
+$assert( $updates->response[ $private_file ]->package === $private['package'], 'a signed public entry for the same file cannot displace the private offer' );
+$privateEnvelope = $sign( $without_private_offer );
+$updates = $update_plugins();
+$assert( ! isset( $updates->response[ $private_file ] ), 'a signed public entry cannot fill an opted-in private file when its offer is absent' );
+
+$GLOBALS['fixture_home_origin'] = 'https://wrong.example';
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $schema_3_git_entry ) );
+$updates = $update_plugins();
+$assert( $updates->response[ $private_file ] === $native_offers[ $private_file ], 'a different site keeps its native public offer' );
+
 echo json_encode(['private_passed'=>$count,'failed'=>0])."\n";

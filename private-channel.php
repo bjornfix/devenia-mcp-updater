@@ -6,18 +6,18 @@
 
 defined( 'ABSPATH' ) || exit;
 
-/** Read the explicitly provisioned site scope without enrolling other sites.
+/**
+ * Read the explicit private plugin scope independently of delivery credentials.
  *
  * @return array|null
  */
-function devenia_mcp_updater_private_config(): ?array {
-	if ( ! defined( 'DEVENIA_MCP_UPDATER_PRIVATE_TOKEN' ) || ! defined( 'DEVENIA_MCP_UPDATER_PRIVATE_SITE' ) || ! defined( 'DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS' ) ) {
+function devenia_mcp_updater_private_scope(): ?array {
+	if ( ! defined( 'DEVENIA_MCP_UPDATER_PRIVATE_SITE' ) || ! defined( 'DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS' ) ) {
 		return null;
 	}
-	$token = DEVENIA_MCP_UPDATER_PRIVATE_TOKEN;
 	$site = rtrim( (string) DEVENIA_MCP_UPDATER_PRIVATE_SITE, '/' );
 	$files = DEVENIA_MCP_UPDATER_PRIVATE_PLUGINS;
-	if ( ! is_string( $token ) || ! preg_match( '/^[a-f0-9]{64}$/D', $token ) || $site !== rtrim( home_url(), '/' ) || ! is_array( $files ) || empty( $files ) ) {
+	if ( $site !== rtrim( home_url(), '/' ) || ! is_array( $files ) || empty( $files ) ) {
 		return null;
 	}
 	foreach ( $files as $file ) {
@@ -25,7 +25,22 @@ function devenia_mcp_updater_private_config(): ?array {
 			return null;
 		}
 	}
-	return array( 'site' => $site, 'token' => $token, 'files' => array_values( array_unique( $files ) ) );
+	return array( 'site' => $site, 'files' => array_values( array_unique( $files ) ) );
+}
+
+/**
+ * Read the credentials for the explicit private plugin scope.
+ *
+ * @return array|null
+ */
+function devenia_mcp_updater_private_config(): ?array {
+	$scope = devenia_mcp_updater_private_scope();
+	$token = defined( 'DEVENIA_MCP_UPDATER_PRIVATE_TOKEN' ) ? DEVENIA_MCP_UPDATER_PRIVATE_TOKEN : null;
+	if ( null === $scope || ! is_string( $token ) || ! preg_match( '/^[a-f0-9]{64}$/D', $token ) ) {
+		return null;
+	}
+	$scope['token'] = $token;
+	return $scope;
 }
 
 /** Exact private route; never a public package or caller-provided host.

@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Verified updates for Devenia plugins through WordPress, with automatic updates controlled by the site owner.
- * Version: 0.1.21
+ * Version: 0.1.22
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/private-channel.php';
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.21' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.22' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -438,12 +438,13 @@ function devenia_mcp_updater_manifest_plugins( bool $force_refresh = false ): ar
 		$manifest = array( 'plugins' => array() );
 	}
 
+	$private_files = devenia_mcp_updater_private_scope()['files'] ?? array();
 	$plugins = array();
 	$slugs = array();
 	$packages = array();
 	foreach ( $manifest['plugins'] as $entry ) {
 		$normalized = devenia_mcp_updater_normalize_entry( $entry );
-		if ( null !== $normalized ) {
+		if ( null !== $normalized && ! in_array( $normalized['file'], $private_files, true ) ) {
 			$slug = (string) $normalized['slug'];
 			$package = (string) $normalized['package'];
 			if ( isset( $plugins[ $normalized['file'] ] ) || isset( $slugs[ $slug ] ) || isset( $packages[ $package ] ) ) {
@@ -1348,6 +1349,11 @@ function devenia_mcp_updater_filter_update_plugins( $transient ) {
 
 	if ( ! isset( $transient->no_update ) || ! is_array( $transient->no_update ) ) {
 		$transient->no_update = array();
+	}
+
+	// Only the private manifest may supply offers for explicitly configured plugin files.
+	foreach ( devenia_mcp_updater_private_scope()['files'] ?? array() as $file ) {
+		unset( $transient->response[ $file ], $transient->no_update[ $file ] );
 	}
 
 	$installed = get_plugins();
