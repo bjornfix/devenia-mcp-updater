@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Verified updates for Devenia plugins through WordPress, with automatic updates controlled by the site owner.
- * Version: 0.1.22
+ * Version: 0.1.23
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/private-channel.php';
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.22' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.23' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -248,12 +248,6 @@ function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exceptio
 			'reason' => 'Accepted atomic database exception: native option-row locks, durable event inventory, and cleanup require fresh database reads or conditional writes. Preserve these operations after native SEO and isolated checkpoint-concurrency tests pass; no other warning is accepted.',
 			'allowedCodes' => array( 'WordPress.DB.DirectDatabaseQuery.DirectQuery', 'WordPress.DB.DirectDatabaseQuery.NoCaching' ),
 			'requiredDetected' => array( 'Use of a direct database call is discouraged.', 'Direct database call without caching detected.' ),
-		),
-		'devenia-mcp-updater' => array(
-			'status' => 'private-infrastructure-waived',
-			'reason' => 'This bootstrap plugin owns the authenticated private updater channel and is intentionally not a WordPress.org-hosted updater.',
-			'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ),
-			'requiredDetected' => array( 'site_transient_update_plugins', 'auto_update_plugin', 'pre_set_site_transient_update_plugins' ),
 		),
 		'mcp-expose-abilities' => array(
 			'status' => 'plugin-management-waived',

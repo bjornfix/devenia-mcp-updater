@@ -220,6 +220,30 @@ $schema_3_git_entry = $plugins[0];
 if ( null === devenia_mcp_updater_normalize_entry( $schema_3_git_entry ) ) {
 	throw new RuntimeException( 'A locally authoritative schema-3 Git release identity was rejected.' );
 }
+$updater_entry = $schema_3_git_entry;
+$updater_entry['slug'] = 'devenia-mcp-updater';
+$updater_entry['file'] = 'devenia-mcp-updater/devenia-mcp-updater.php';
+$updater_entry['package'] = str_replace( $schema_3_git_entry['slug'], $updater_entry['slug'], $schema_3_git_entry['package'] );
+$updater_entry['releaseIdentity']['slug'] = $updater_entry['slug'];
+$updater_entry['releaseIdentity']['mainFile'] = $updater_entry['file'];
+$updater_entry['releaseIdentity']['members'][0]['path'] = $updater_entry['file'];
+$updater_entry['releaseIdentity']['membersSha256'] = hash( 'sha256', json_encode( $updater_entry['releaseIdentity']['members'], JSON_UNESCAPED_SLASHES ) );
+if ( null === devenia_mcp_updater_normalize_entry( $updater_entry ) ) {
+	throw new RuntimeException( 'The updater rejected its own qualified zero-finding offer.' );
+}
+$waived_updater_entry = $updater_entry;
+$waived_updater_entry['pluginCheck']['qualityDecision'] = 'approved-policy-exception';
+$waived_updater_entry['pluginCheck']['errorCount'] = 2;
+$waived_updater_entry['pluginCheck']['warningCount'] = 3;
+$waived_updater_entry['pluginCheck']['policyException'] = array(
+	'status' => 'private-infrastructure-waived',
+	'reason' => 'This bootstrap plugin owns the authenticated private updater channel and is intentionally not a WordPress.org-hosted updater.',
+	'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ),
+	'requiredDetected' => array( 'site_transient_update_plugins', 'auto_update_plugin', 'pre_set_site_transient_update_plugins' ),
+);
+if ( null !== devenia_mcp_updater_normalize_entry( $waived_updater_entry ) ) {
+	throw new RuntimeException( 'The updater accepted its historical quality exception for a new offer.' );
+}
 $atomic_entry = $schema_3_git_entry;
 $atomic_entry['slug'] = 'static-publication';
 $atomic_entry['file'] = 'static-publication/static-publication.php';
