@@ -3,7 +3,7 @@
  * Plugin Name: Devenia MCP Updater
  * Plugin URI: https://devenia.com
  * Description: Verified updates for Devenia plugins through WordPress, with automatic updates controlled by the site owner.
- * Version: 0.1.23
+ * Version: 0.1.24
  * Author: basicus
  * Author URI: https://profiles.wordpress.org/basicus/
  * License: GPL-2.0+
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/private-channel.php';
 
-define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.23' );
+define( 'DEVENIA_MCP_UPDATER_VERSION', '0.1.24' );
 define( 'DEVENIA_MCP_UPDATER_MANIFEST_URL', 'https://downloads.devenia.com/devenia-mcp-manifest.json' );
 define( 'DEVENIA_MCP_UPDATER_TRANSIENT', 'devenia_mcp_updater_manifest_v2' );
 if ( ! defined( 'DEVENIA_MCP_UPDATER_MANIFEST_PUBLIC_KEY' ) ) {
@@ -213,8 +213,7 @@ function devenia_mcp_updater_normalize_entry( $entry, bool $private = false ): ?
 		&& empty( $plugin_check['policyException'] )
 		&& 'wp-plugin-check-exit-zero-strict-json-or-native-empty-v1' === (string) ( $plugin_check['gateEvidence'] ?? '' );
 	$exception_quality = 'approved-policy-exception' === (string) ( $plugin_check['qualityDecision'] ?? '' )
-		&& devenia_mcp_updater_is_exact_quality_exception( $slug, $plugin_check['policyException'] ?? null )
-		&& ( 'static-publication' !== $slug || 0 === (int) ( $plugin_check['errorCount'] ?? -1 ) );
+		&& devenia_mcp_updater_is_exact_quality_exception( $slug, $plugin_check, $private );
 	if (
 		'passed' !== ( $plugin_check['status'] ?? '' ) ||
 		$sha256 !== strtolower( (string) ( $plugin_check['sha256'] ?? '' ) ) ||
@@ -240,14 +239,30 @@ function devenia_mcp_updater_normalize_entry( $entry, bool $private = false ): ?
 	return $entry;
 }
 
-/** Accept only the centrally approved, exact Plugin Check exceptions. */
-function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exception ): bool {
+/** Validate the signed receipt for a centrally approved Plugin Check exception. */
+function devenia_mcp_updater_is_exact_quality_exception( string $slug, array $plugin_check, bool $private ): bool {
+	$exception = $plugin_check['policyException'] ?? null;
+	if ( ! is_array( $exception ) ) {
+		return false;
+	}
+
+	$devenia_update_gate = 'wp-plugin-check-exit-zero-approved-devenia-update-v1' === ( $plugin_check['gateEvidence'] ?? null );
+	$private_header = 'private-update-uri-protection' === ( $exception['status'] ?? null );
+	$errors = $plugin_check['errorCount'] ?? null;
+	$warnings = $plugin_check['warningCount'] ?? null;
+
 	$approved = array(
 		'static-publication' => array(
 			'status' => 'atomic-database-waived',
 			'reason' => 'Accepted atomic database exception: native option-row locks, durable event inventory, and cleanup require fresh database reads or conditional writes. Preserve these operations after native SEO and isolated checkpoint-concurrency tests pass; no other warning is accepted.',
 			'allowedCodes' => array( 'WordPress.DB.DirectDatabaseQuery.DirectQuery', 'WordPress.DB.DirectDatabaseQuery.NoCaching' ),
 			'requiredDetected' => array( 'Use of a direct database call is discouraged.', 'Direct database call without caching detected.' ),
+		),
+		'devenia-mcp-updater' => array(
+			'status' => 'private-infrastructure-waived',
+			'reason' => 'This bootstrap plugin owns the authenticated private updater channel and is intentionally not a WordPress.org-hosted updater.',
+			'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ),
+			'requiredDetected' => array( 'site_transient_update_plugins', 'auto_update_plugin', 'pre_set_site_transient_update_plugins' ),
 		),
 		'mcp-expose-abilities' => array(
 			'status' => 'plugin-management-waived',
@@ -262,12 +277,40 @@ function devenia_mcp_updater_is_exact_quality_exception( string $slug, $exceptio
 			'requiredDetected' => array( 'Tested up to: 7.0', 'wordpressdotorg' ),
 		),
 	);
-	if ( ! isset( $approved[ $slug ] ) || ! is_array( $exception ) ) {
+
+	if ( 'devenia-mcp-updater' === $slug ) {
+		if ( ! $devenia_update_gate || ! is_int( $errors ) || ! is_int( $warnings )
+			|| $errors < 0 || $errors > 2 || $warnings < 0 || $warnings > 3 || 0 === ( $errors + $warnings ) ) {
+			return false;
+		}
+		$descriptor = $approved[ $slug ];
+	} elseif ( $private_header ) {
+		if ( ! $private || ! $devenia_update_gate || 1 !== $errors || 0 !== $warnings ) {
+			return false;
+		}
+		$descriptor = array(
+			'status' => 'private-update-uri-protection',
+			'reason' => 'WordPress Core update protection for a plugin delivered through the private Devenia Update channel.',
+			'allowedCodes' => array( 'plugin_updater_detected' ),
+			'requiredDetected' => array( 'Use of the Update URI header is not allowed in plugins hosted on WordPress.org.' ),
+		);
+	} else {
+		if ( $devenia_update_gate || ! isset( $approved[ $slug ] )
+			|| ( 'static-publication' === $slug && 0 !== (int) ( $errors ?? -1 ) ) ) {
+			return false;
+		}
+		$descriptor = $approved[ $slug ];
+	}
+
+	if ( $devenia_update_gate && count( $exception ) !== count( $descriptor ) ) {
 		return false;
 	}
-	foreach ( $approved[ $slug ] as $key => $expected ) {
+	foreach ( $descriptor as $key => $expected ) {
 		$actual = $exception[ $key ] ?? null;
 		if ( is_array( $expected ) ) {
+			if ( $devenia_update_gate && ( ! is_array( $actual ) || array_values( $actual ) !== $actual ) ) {
+				return false;
+			}
 			$actual = is_array( $actual ) ? array_values( $actual ) : array();
 			sort( $actual );
 			sort( $expected );

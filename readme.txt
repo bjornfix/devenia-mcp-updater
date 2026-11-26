@@ -4,7 +4,7 @@ Tags: mcp, updates, automation, plugins, self-hosted
 Requires at least: 6.8
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 0.1.23
+Stable tag: 0.1.24
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -72,6 +72,9 @@ No. External Git hosting is not required for update discovery, package delivery,
 The updater records the problem and leaves installed plugins untouched.
 
 == Changelog ==
+
+= 0.1.24 =
+* Accept eligible signed Devenia Update offers for the updater and for plugins using the site's private update channel.
 
 = 0.1.23 =
 * Reject updater offers that rely on an expired validation exception.

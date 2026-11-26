@@ -125,7 +125,8 @@ function delete_plugins( array $plugins ) {
 function home_url( string $path = '/' ): string { return ( $GLOBALS['fixture_home_origin'] ?? 'https://devenia.com' ) . $path; }
 function add_query_arg( string $key, string $value, string $url ): string { return $url . '?' . rawurlencode( $key ) . '=' . rawurlencode( $value ); }
 
-require_once dirname( __DIR__ ) . '/devenia-mcp-updater.php';
+$legacy_updater_source = $argv[1] ?? null;
+require_once $legacy_updater_source ?? dirname( __DIR__ ) . '/devenia-mcp-updater.php';
 
 if ( ! empty( $GLOBALS['fixture_filters']['auto_update_plugin'] ) ) {
 	throw new RuntimeException( 'The update channel must leave automatic-update choices to WordPress and the site owner.' );
@@ -228,6 +229,17 @@ $updater_entry['releaseIdentity']['slug'] = $updater_entry['slug'];
 $updater_entry['releaseIdentity']['mainFile'] = $updater_entry['file'];
 $updater_entry['releaseIdentity']['members'][0]['path'] = $updater_entry['file'];
 $updater_entry['releaseIdentity']['membersSha256'] = hash( 'sha256', json_encode( $updater_entry['releaseIdentity']['members'], JSON_UNESCAPED_SLASHES ) );
+if ( ! preg_match( '/^Stable tag: ([0-9.]+)$/m', file_get_contents( dirname( __DIR__ ) . '/readme.txt' ), $candidate_release ) ) {
+	throw new RuntimeException( 'The candidate version is missing from the package readme.' );
+}
+$candidate_version = $candidate_release[1];
+$updater_entry['version']                       = $candidate_version;
+$updater_entry['releaseIdentity']['version']    = $candidate_version;
+$updater_fingerprint = $updater_entry['pluginCheck']['verificationFingerprint'];
+unset( $updater_fingerprint['digest'] );
+$updater_fingerprint['pluginVersion'] = $candidate_version;
+$updater_fingerprint['digest'] = hash( 'sha256', json_encode( fixture_canonicalize( $updater_fingerprint ), JSON_UNESCAPED_SLASHES ) );
+$updater_entry['pluginCheck']['verificationFingerprint'] = $updater_fingerprint;
 if ( null === devenia_mcp_updater_normalize_entry( $updater_entry ) ) {
 	throw new RuntimeException( 'The updater rejected its own qualified zero-finding offer.' );
 }
@@ -241,8 +253,55 @@ $waived_updater_entry['pluginCheck']['policyException'] = array(
 	'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ),
 	'requiredDetected' => array( 'site_transient_update_plugins', 'auto_update_plugin', 'pre_set_site_transient_update_plugins' ),
 );
+$approved_update_gate = 'wp-plugin-check-exit-zero-approved-devenia-update-v1';
+$approved_updater_entry = $waived_updater_entry;
+$approved_updater_entry['pluginCheck']['gateEvidence'] = $approved_update_gate;
+$approved_updater_entry['pluginCheck']['warningCount'] = 2;
+
+$GLOBALS['fixture_installed'][ $updater_entry['file'] ] = array( 'Version' => '0.1.21' );
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $approved_updater_entry ) );
+$GLOBALS['fixture_updates'] = devenia_mcp_updater_filter_update_plugins( (object) array( 'response' => array() ) );
+$offered_updater = $GLOBALS['fixture_updates']->response[ $updater_entry['file'] ] ?? null;
+if ( $candidate_version !== ( $offered_updater->new_version ?? '' ) || $updater_entry['package'] !== ( $offered_updater->package ?? '' )
+	|| ! devenia_mcp_updater_allow_mcp_expose_plugin_update( false, $updater_entry['file'] ) ) {
+	throw new RuntimeException( 'WordPress did not receive the exact signed approved updater offer.' );
+}
+if ( null !== $legacy_updater_source ) {
+	if ( '0.1.21' !== DEVENIA_MCP_UPDATER_VERSION ) {
+		throw new RuntimeException( 'The bootstrap fixture requires updater 0.1.21.' );
+	}
+	echo 'Updater 0.1.21 offered the signed ' . $candidate_version . ' bootstrap update.' . PHP_EOL;
+	exit;
+}
+unset( $GLOBALS['fixture_installed'][ $updater_entry['file'] ] );
+$GLOBALS['fixture_updates'] = (object) array( 'response' => array() );
 if ( null !== devenia_mcp_updater_normalize_entry( $waived_updater_entry ) ) {
 	throw new RuntimeException( 'The updater accepted its historical quality exception for a new offer.' );
+}
+$full_findings_entry = $approved_updater_entry;
+$full_findings_entry['pluginCheck']['warningCount'] = 3;
+if ( null === devenia_mcp_updater_normalize_entry( $full_findings_entry ) ) {
+	throw new RuntimeException( 'The updater rejected the full documented findings.' );
+}
+foreach ( array(
+	'undocumented warning count' => array( 'warningCount' => 4 ),
+	'undocumented error count'   => array( 'errorCount' => 3 ),
+	'negative finding count'     => array( 'errorCount' => -1 ),
+	'non-integer finding count'  => array( 'warningCount' => '2' ),
+	'no findings'               => array( 'errorCount' => 0, 'warningCount' => 0 ),
+	'failed check'              => array( 'status' => 'failed' ),
+	'wrong package digest'      => array( 'sha256' => str_repeat( 'a', 64 ) ),
+	'wrong exception codes'     => array( 'policyException' => array_merge(
+		$approved_updater_entry['pluginCheck']['policyException'],
+		array( 'allowedCodes' => array( 'plugin_updater_detected', 'unexpected_code' ) )
+	) ),
+) as $label => $invalid_fields ) {
+	$invalid_updater = $approved_updater_entry;
+	$invalid_updater['pluginCheck'] = array_merge( $invalid_updater['pluginCheck'], $invalid_fields );
+	$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $invalid_updater ) );
+	if ( array() !== devenia_mcp_updater_manifest_plugins() ) {
+		throw new RuntimeException( 'Updater accepted an invalid signed exception: ' . $label );
+	}
 }
 $atomic_entry = $schema_3_git_entry;
 $atomic_entry['slug'] = 'static-publication';

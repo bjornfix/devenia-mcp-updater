@@ -72,6 +72,55 @@ $updates = $update_plugins();
 $assert( $updates->response[ $private_file ]->package === $private['package'], 'a signed private offer replaces the native public offer' );
 $assert( $updates->response[ $other_file ] === $native_offers[ $other_file ], 'the normal public offer survives alongside a private offer' );
 
+$approved_private = $private;
+$approved_private['pluginCheck'] = array_merge(
+	$private['pluginCheck'],
+	array(
+		'qualityDecision' => 'approved-policy-exception',
+		'gateEvidence'    => $approved_update_gate,
+		'errorCount'      => 1,
+		'warningCount'    => 0,
+		'policyException' => array(
+			'status'           => 'private-update-uri-protection',
+			'reason'           => 'WordPress Core update protection for a plugin delivered through the private Devenia Update channel.',
+			'allowedCodes'     => array( 'plugin_updater_detected' ),
+			'requiredDetected' => array( 'Use of the Update URI header is not allowed in plugins hosted on WordPress.org.' ),
+		),
+	)
+);
+$approved_payload = $payload;
+$approved_payload['plugins'] = array( $approved_private );
+$privateEnvelope = $sign( $approved_payload );
+$updates = $update_plugins();
+$assert( $private['package'] === $updates->response[ $private_file ]->package, 'WordPress receives the signed and authenticated private header exception' );
+$approved_download = devenia_mcp_updater_verify_download( false, $private['package'] );
+$assert( is_string( $approved_download ) && hash_file( 'sha256', $approved_download ) === $private['sha256'], 'the approved private offer still verifies the package digest' );
+wp_delete_file( $approved_download );
+
+$private_descriptor = $approved_private['pluginCheck']['policyException'];
+foreach ( array(
+	'old gate'          => array( 'gateEvidence' => $private['pluginCheck']['gateEvidence'] ),
+	'wrong error count' => array( 'errorCount' => 2 ),
+	'warning'           => array( 'warningCount' => 1 ),
+	'wrong reason'      => array( 'policyException' => array_merge( $private_descriptor, array( 'reason' => 'Unapproved reason.' ) ) ),
+	'other finding'     => array( 'policyException' => array_merge( $private_descriptor, array( 'requiredDetected' => array( 'Different finding.' ) ) ) ),
+	'additional code'  => array( 'policyException' => array_merge( $private_descriptor, array( 'allowedCodes' => array( 'plugin_updater_detected', 'update_modification_detected' ) ) ) ),
+) as $label => $invalid_fields ) {
+	$bad = $approved_payload;
+	$bad['plugins'][0]['pluginCheck'] = array_merge( $approved_private['pluginCheck'], $invalid_fields );
+	$privateEnvelope = $sign( $bad );
+	$updates = $update_plugins();
+	$assert( ! isset( $updates->response[ $private_file ] ) && ! isset( $updates->no_update[ $private_file ] ), 'invalid private exception cannot restore a catalogue offer: ' . $label );
+	$assert( $updates->response[ $other_file ] === $native_offers[ $other_file ], 'unrelated offers survive private exception rejection: ' . $label );
+}
+
+$privateEnvelope = $sign( $approved_payload );
+$responseCode = 401;
+$assert( array() === devenia_mcp_updater_private_plugins(), 'the header exception cannot bypass private authentication' );
+$responseCode = 200;
+$privateEnvelope['signature']['value'] = base64_encode( str_repeat( 'x', 64 ) );
+$assert( array() === devenia_mcp_updater_private_plugins(), 'the header exception cannot bypass signature verification' );
+
 $without_private_offer = $payload;
 $without_private_offer['plugins'] = array();
 $bad_signature = $sign( $payload );
@@ -108,7 +157,10 @@ $updates = $update_plugins();
 $assert( ! isset( $updates->response[ $private_file ] ), 'a signed public entry cannot fill an opted-in private file when its offer is absent' );
 
 $GLOBALS['fixture_home_origin'] = 'https://wrong.example';
-$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $schema_3_git_entry ) );
+$public_header_exception = $public_copy;
+$public_header_exception['pluginCheck'] = $approved_private['pluginCheck'];
+$GLOBALS['fixture_manifest'] = fixture_signed_manifest( array( $schema_3_git_entry, $public_header_exception ) );
+$assert( ! isset( devenia_mcp_updater_manifest_plugins()[ $private_file ] ), 'a signed public entry cannot use the private header exception' );
 $updates = $update_plugins();
 $assert( $updates->response[ $private_file ] === $native_offers[ $private_file ], 'a different site keeps its native public offer' );
 
